@@ -43,6 +43,20 @@ There are no migrations to write and no CRUD endpoints to build. The three reque
 
 Each one carries `Authorization: Bearer <your secret key>`.
 
+## What it looks like in the console
+
+After `npm run setup`, the collection appears under **Custom Data**:
+
+![The Custom Data page listing the Customers collection with four fields](img/episode-02/01-customers-collection.png)
+
+Its **Schema** tab shows the fields exactly as the code defined them:
+
+![The Customers schema: name, email, phone and status with their constraints](img/episode-02/02-customers-schema.png)
+
+After `npm run customer:add`, the first customer is in the **Records** tab:
+
+![The Customers records table showing Maya Chen as a lead](img/episode-02/03-first-customer.png)
+
 ## Things worth noticing
 
 - **The default applies.** The script sends no `status`; the record comes back with `status: "lead"`.
