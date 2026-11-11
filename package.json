@@ -1,0 +1,16 @@
+{
+  "name": "hyphabase-series-crm",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Build a CRM with HyphaBase - the example app from the series, one tagged checkpoint per episode",
+  "license": "MIT",
+  "engines": { "node": ">=20.6" },
+  "scripts": {
+    "setup": "node --env-file=.env src/setup.js",
+    "customer:add": "node --env-file=.env src/add-customer.js",
+    "customer:list": "node --env-file=.env src/list-customers.js",
+    "test": "node --test test/*.test.js",
+    "smoke": "node --env-file=.env --test test/smoke.js"
+  }
+}
