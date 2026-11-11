@@ -36,7 +36,7 @@ test("ensureCustomersCollection leaves an existing collection alone", async () =
 });
 
 test("addCustomer posts a flat record to the customers collection", async () => {
-  const customer = { name: "Maya Chen", email: "maya.chen@example.com" };
+  const customer = { name: "Dana Whitfield", email: "dana@example.com" };
   const { api, calls } = apiWith({ status: 201, body: { data: { id: "c1", ...customer, status: "lead" } } });
 
   const created = await addCustomer(api, customer);
@@ -49,9 +49,9 @@ test("addCustomer posts a flat record to the customers collection", async () => 
 });
 
 test("getCustomer reads one record by id", async () => {
-  const { api, calls } = apiWith({ body: { data: { id: "c1", name: "Maya Chen" } } });
+  const { api, calls } = apiWith({ body: { data: { id: "c1", name: "Dana Whitfield" } } });
 
-  assert.equal((await getCustomer(api, "c1")).name, "Maya Chen");
+  assert.equal((await getCustomer(api, "c1")).name, "Dana Whitfield");
   assert.equal(calls[0].url, "http://api.test/api/modules/data/customers/records/c1");
 });
 

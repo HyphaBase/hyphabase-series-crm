@@ -14,8 +14,8 @@ import { run } from "./hyphabase.js";
 
 const { values } = parseArgs({
   options: {
-    name: { type: "string", default: "Maya Chen" },
-    email: { type: "string", default: "maya.chen@example.com" },
+    name: { type: "string", default: "Dana Whitfield" },
+    email: { type: "string", default: "dana@example.com" },
     phone: { type: "string", default: "555-0142" },
     status: { type: "string" },
   },

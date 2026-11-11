@@ -1,6 +1,6 @@
 # Build a CRM with HyphaBase
 
-The example app from the **Build a CRM with HyphaBase** series. One small CRM, built one feature at a time on a [HyphaBase](https://hyphabase.com) backend. Each episode ends at a tagged commit you can check out and run.
+The example app from the **Build a CRM with HyphaBase** series. One small CRM, built one feature at a time on a [HyphaBase](https://hyphabase.com) backend. The app is **Brightside CRM**: the customer list for Brightside Cleaning, a home cleaning company with a few hundred regulars and locations in Portland and Salem. Each episode ends at a tagged commit you can check out and run.
 
 > **Status: pre-release.** The free sandbox is not open for signups yet, so you can read the code but not run it against your own backend today. [Get early access](https://hyphabase.com) and we'll email you when it opens.
 
@@ -43,8 +43,8 @@ Created customer f294a1f4-3625-49e3-a491-2e9ecc71769e
 Read it back from the API:
 {
   id: 'f294a1f4-3625-49e3-a491-2e9ecc71769e',
-  name: 'Maya Chen',
-  email: 'maya.chen@example.com',
+  name: 'Dana Whitfield',
+  email: 'dana@example.com',
   phone: '555-0142',
   status: 'lead',
   ...

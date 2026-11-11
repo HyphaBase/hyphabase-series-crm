@@ -55,7 +55,7 @@ Its **Schema** tab shows the fields exactly as the code defined them:
 
 After `npm run customer:add`, the first customer is in the **Records** tab:
 
-![The Customers records table showing Maya Chen as a lead](img/episode-02/03-first-customer.png)
+![The Customers records table showing Dana Whitfield as a lead](img/episode-02/03-first-customer.png)
 
 ## Things worth noticing
 
