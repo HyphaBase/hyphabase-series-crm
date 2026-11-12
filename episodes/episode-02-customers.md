@@ -66,6 +66,6 @@ After `npm run customer:add`, the first customer is in the **Records** tab:
 
 ## Known limits at this point
 
-- No login: anyone holding the secret key can do everything the key allows. Episode 3 adds authentication.
+- No login: anyone holding the secret key can do everything the key allows. [Episode 3](episode-03-authentication.md) adds authentication.
 - No update or delete: the key in this episode cannot delete, on purpose.
 - No screens: the frontend arrives with the SDK in episode 5.

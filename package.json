@@ -10,7 +10,12 @@
     "setup": "node --env-file=.env src/setup.js",
     "customer:add": "node --env-file=.env src/add-customer.js",
     "customer:list": "node --env-file=.env src/list-customers.js",
+    "user:add": "node --env-file=.env src/add-user.js",
+    "serve": "node --env-file=.env src/serve.js",
+    "crm:signin": "node src/crm-signin.js",
+    "crm:customers": "node src/crm-customers.js",
+    "crm:signout": "node src/crm-signout.js",
     "test": "node --test test/*.test.js",
-    "smoke": "node --env-file=.env --test test/smoke.js"
+    "smoke": "node --env-file=.env --test test/smoke.js test/smoke-auth.js"
   }
 }

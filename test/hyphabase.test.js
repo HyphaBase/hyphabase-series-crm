@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { ApiError, createApi, describeError, loadConfig } from "../src/hyphabase.js";
+import { ApiError, createApi, describeError, loadConfig, requireLocation } from "../src/hyphabase.js";
 import { fakeFetch } from "./fake-fetch.js";
 
 test("loadConfig names the missing variable", () => {
@@ -56,4 +56,25 @@ test("describeError explains a rejected key and a missing scope", () => {
 test("describeError explains an unreachable API", () => {
   const error = new TypeError("fetch failed");
   assert.match(describeError(error), /HYPHABASE_API_URL/);
+});
+
+test("loadConfig reads the optional location id", () => {
+  const env = { HYPHABASE_API_URL: "http://x", HYPHABASE_SECRET_KEY: "sk_test_1" };
+  assert.equal(loadConfig(env).locationId, undefined);
+  assert.equal(loadConfig({ ...env, HYPHABASE_LOCATION_ID: "loc-1" }).locationId, "loc-1");
+});
+
+test("requireLocation names the missing variable", () => {
+  assert.throws(() => requireLocation({}), /HYPHABASE_LOCATION_ID/);
+  assert.equal(requireLocation({ locationId: "loc-1" }), "loc-1");
+});
+
+test("request can act as a user at a location instead of as the secret key", async () => {
+  const { fetch, calls } = fakeFetch({ body: { user: {} } });
+  const api = createApi({ url: "http://api.test", key: "sk_test_1", fetch });
+
+  await api.request("/api/auth/me", { token: "user-token", locationId: "loc-1" });
+
+  assert.equal(calls[0].headers.Authorization, "Bearer user-token");
+  assert.equal(calls[0].headers["X-Location-Id"], "loc-1");
 });
