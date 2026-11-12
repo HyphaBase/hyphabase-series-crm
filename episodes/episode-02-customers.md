@@ -2,7 +2,7 @@
 
 **Result:** the CRM has a Customers collection, and its first customer was created and read back through the API.
 
-**Tag:** `episode-02-customers` (created when the episode is published)
+**Tag:** `episode-02-customers`
 
 **Starts from:** the app, location and secret key from [episode 1](episode-01-backend.md).
 
