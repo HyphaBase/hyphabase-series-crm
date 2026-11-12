@@ -13,7 +13,7 @@ This episode happens in the HyphaBase console, so it has no code and no tag in t
 2. Add a location. The series calls it **Portland**.
 3. Wait for provisioning to finish. The location gets its own database.
 
-   ![The Locations page showing Portland with provisioning "ready"](img/episode-01/02-location-ready.png)
+   ![The app's Overview page: one location, ready, and "Locations provisioning" ready under Health](img/episode-01/02-location-ready.png)
 
 4. Create a secret API key for the app's sandbox environment. Episode 2 needs these scopes:
    - `data.collections.manage`
