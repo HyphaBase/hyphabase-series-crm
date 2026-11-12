@@ -1,0 +1,27 @@
+{
+  "name": "brightside-crm-web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The Brightside CRM web app: a React interface and a few server routes that use the HyphaBase SDK",
+  "scripts": {
+    "dev": "next dev -p 3010",
+    "build": "next build",
+    "start": "next start -p 3010",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "hyphabase": "file:../vendor/hyphabase-0.0.1.tgz",
+    "next": "^16.2.11",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "typescript": "^5.8.3",
+    "vitest": "^5.1.0"
+  }
+}

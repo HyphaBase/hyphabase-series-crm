@@ -12,11 +12,12 @@ The example app from the **Build a CRM with HyphaBase** series. One small CRM, b
 | 2 | A Customers collection, and the first customer created and read through the API | [episode-02-customers](episodes/episode-02-customers.md) |
 | 3 | Sign-in: a first user, and a server that refuses anyone who is not signed in | [episode-03-authentication](episodes/episode-03-authentication.md) |
 | 4 | Roles: an Owner and a Staff role, and a server that checks what each person may do | [episode-04-permissions](episodes/episode-04-permissions.md) |
-| 5 | The SDK and a real frontend | planned |
+| 5 | The SDK and a real frontend: sign in, see the customers and add one, in a browser | [episode-05-sdk-frontend](episodes/episode-05-sdk-frontend.md) |
+| 6 | Editing and deleting customers | planned |
 
 ## Run it
 
-You need Node 20.6 or newer and a HyphaBase app with a secret key ([episode 1](episodes/episode-01-backend.md)). There is nothing to install: the scripts use Node's built-in `fetch`.
+You need Node 20.6 or newer and a HyphaBase app with a secret key ([episode 1](episodes/episode-01-backend.md)). Episodes 2 to 4 have nothing to install: the scripts use Node's built-in `fetch`.
 
 ```bash
 git clone https://github.com/HyphaBase/hyphabase-series-crm.git
@@ -80,13 +81,26 @@ npm run crm:customers     # the customer list
 npm run crm:delete -- --email dana@example.com    # 403 Your role does not allow this.
 ```
 
+From episode 5 the CRM is a web app, in `web/`. `.env` needs `HYPHABASE_PUBLISHABLE_KEY`, the publishable half of the same key (see [the guide](episodes/episode-05-sdk-frontend.md)):
+
+```bash
+npm --prefix web install  # once
+npm run web               # http://localhost:3010
+```
+
+Sign in as Sarah to see the customers and add one. Sign in as Marcus and the list is there, the **Add customer** button is not.
+
+The web app uses the HyphaBase SDK. The SDK is not on npm yet, so this repository carries a packed copy in `vendor/`.
+
 ## What this is, and isn't, so far
 
-After episode 4 the CRM has a data foundation (a real table with typed fields, a unique email and a default status), a sign-in, and roles: users and their roles are stored by HyphaBase, and a small server refuses every request that does not come from a signed-in user whose role allows it. It has no screens yet, and a person can only read and delete customers through the server. The frontend comes next.
+After episode 5 the CRM has a data foundation (a real table with typed fields, a unique email and a default status), a sign-in, roles, and screens: a Next.js app whose pages hold no key and no token, and whose server refuses every request that does not come from a signed-in user whose role allows it. A person can see the customers and add one. Editing and deleting from the screen come next.
 
 ## Keep your secret key secret
 
 The key in `.env` can read and write your data. It belongs on a server or your own machine. `.env` is gitignored; keep it that way, and never put an `sk_` key in browser code. The same goes for `.session`, which holds your sign-in token.
+
+In the web app only `web/lib/server.ts` reads the secret key. It is marked server-only, so the build fails if a page imports it, and `npm run smoke:web` checks that the key is in no file a browser can download.
 
 ## Troubleshooting
 
@@ -104,13 +118,17 @@ The key in `.env` can read and write your data. It belongs on a server or your o
 | `No user with the email ...` | `role:give` could not find that user. Create them with `npm run user:add` first. |
 | `Active employees limit reached (5 of 5 used).` | Your plan's user limit. `npm run smoke` creates three test users while it runs and removes them afterwards only if the key has the `users.delete` scope. |
 | `Could not reach the CRM server` | `npm run serve` is not running, or `CRM_URL` / `PORT` do not match. |
+| `Set HYPHABASE_PUBLISHABLE_KEY to a publishable key` (in the `npm run web` log) | Episode 5 on: add the key's publishable half to `.env`, then restart `npm run web`. |
+| The web app says `The CRM could not reach its backend.` | The reason is in the terminal running `npm run web`: usually a wrong `HYPHABASE_API_URL` or a missing scope on the key. |
 | `Could not reach the API` | `HYPHABASE_API_URL` is wrong, or the API is down. |
 
 ## Tests
 
 ```bash
-npm test         # unit tests, no network
-npm run smoke    # the whole walkthrough against the environment in .env
+npm test             # unit tests, no network
+npm run smoke        # episodes 2 to 4 against the environment in .env
+npm run web:test     # the web app's unit tests, no network
+npm run smoke:web    # the built web app against the environment in .env
 ```
 
 The smoke test creates three test users and a test customer and removes them when it is done. Removing the users needs the `users.delete` scope on the key, which the CRM itself does not use; without it they stay, and they count towards your plan's user limit.

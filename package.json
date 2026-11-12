@@ -19,7 +19,10 @@
     "crm:me": "node src/crm-me.js",
     "crm:delete": "node src/crm-delete.js",
     "crm:signout": "node src/crm-signout.js",
+    "web": "npm --prefix web run dev",
+    "web:test": "npm --prefix web test",
     "test": "node --test test/*.test.js",
-    "smoke": "node --env-file=.env --test test/smoke.js test/smoke-auth.js test/smoke-roles.js"
+    "smoke": "node --env-file=.env --test test/smoke.js test/smoke-auth.js test/smoke-roles.js",
+    "smoke:web": "npm --prefix web run build && node --env-file=.env --test test/smoke-web.js"
   }
 }
