@@ -11,7 +11,7 @@ The example app from the **Build a CRM with HyphaBase** series. One small CRM, b
 | 1 | The backend: an app and its first location, with a dedicated database | [episode-01-backend](episodes/episode-01-backend.md) |
 | 2 | A Customers collection, and the first customer created and read through the API | [episode-02-customers](episodes/episode-02-customers.md) |
 | 3 | Sign-in: a first user, and a server that refuses anyone who is not signed in | [episode-03-authentication](episodes/episode-03-authentication.md) |
-| 4 | Roles and permissions | planned |
+| 4 | Roles: an Owner and a Staff role, and a server that checks what each person may do | [episode-04-permissions](episodes/episode-04-permissions.md) |
 | 5 | The SDK and a real frontend | planned |
 
 ## Run it
@@ -66,9 +66,23 @@ npm run crm:customers     # the customer list
 npm run crm:signout
 ```
 
+From episode 4 signing in is not enough: a person needs a role. The key needs the `roles.view`, `roles.create`, `roles.assign`, `users.view` and `data.records.delete` scopes (see [the guide](episodes/episode-04-permissions.md)):
+
+```bash
+npm run user:add -- --name "Marcus Bell" --email marcus@brightsideclean.example
+npm run roles:setup       # define the Owner and Staff roles
+npm run role:give -- --email sarah@brightsideclean.example --role owner
+npm run role:give -- --email marcus@brightsideclean.example --role staff
+
+# in the second terminal, signed in as Marcus
+npm run crm:me            # who you are and what you may do
+npm run crm:customers     # the customer list
+npm run crm:delete -- --email dana@example.com    # 403 Your role does not allow this.
+```
+
 ## What this is, and isn't, so far
 
-After episode 3 the CRM has a data foundation (a real table with typed fields, a unique email and a default status) and a sign-in: users are stored by HyphaBase, and a small server refuses every request that does not come from a signed-in user. It has no permissions yet, so every signed-in user can see everything, and no screens. Those come in the next episodes.
+After episode 4 the CRM has a data foundation (a real table with typed fields, a unique email and a default status), a sign-in, and roles: users and their roles are stored by HyphaBase, and a small server refuses every request that does not come from a signed-in user whose role allows it. It has no screens yet, and a person can only read and delete customers through the server. The frontend comes next.
 
 ## Keep your secret key secret
 
@@ -86,6 +100,9 @@ The key in `.env` can read and write your data. It belongs on a server or your o
 | `Missing HYPHABASE_LOCATION_ID` | Episode 3 on: add your location's id to `.env`. |
 | `This API key does not have access to the requested location.` | In the console, open the key's **Access** settings and grant it the location. |
 | `email: The email has already been taken.` | That user already exists. Sign in, or pass a different `--email` to `user:add`. |
+| `403 Your role does not allow this.` | Episode 4 on: you are signed in, but your role lacks the permission. `npm run crm:me` shows what you have; `npm run role:give` gives a user a role. |
+| `No user with the email ...` | `role:give` could not find that user. Create them with `npm run user:add` first. |
+| `Active employees limit reached (5 of 5 used).` | Your plan's user limit. `npm run smoke` creates three test users while it runs and removes them afterwards only if the key has the `users.delete` scope. |
 | `Could not reach the CRM server` | `npm run serve` is not running, or `CRM_URL` / `PORT` do not match. |
 | `Could not reach the API` | `HYPHABASE_API_URL` is wrong, or the API is down. |
 
@@ -95,6 +112,8 @@ The key in `.env` can read and write your data. It belongs on a server or your o
 npm test         # unit tests, no network
 npm run smoke    # the whole walkthrough against the environment in .env
 ```
+
+The smoke test creates three test users and a test customer and removes them when it is done. Removing the users needs the `users.delete` scope on the key, which the CRM itself does not use; without it they stay, and they count towards your plan's user limit.
 
 ## License
 

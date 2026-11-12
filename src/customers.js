@@ -44,3 +44,8 @@ export async function listCustomers(api) {
   const { data } = await api.request(`${RECORDS}?sort=-created_at`);
   return data;
 }
+
+/** Deletes a customer. Needs the `data.records.delete` scope (episode 4). */
+export async function deleteCustomer(api, id) {
+  await api.request(`${RECORDS}/${encodeURIComponent(id)}`, { method: "DELETE" });
+}

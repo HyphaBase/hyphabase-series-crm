@@ -31,6 +31,13 @@ async function serverWith(...responses) {
 }
 
 const sarah = { id: "u1", name: "Sarah Mitchell", email: "sarah@brightsideclean.example" };
+const marcus = { id: "u2", name: "Marcus Bell", email: "marcus@brightsideclean.example" };
+
+// What HyphaBase answers when asked what a user may do.
+const asOwner = { body: { permissions: ["data.records.read", "data.records.create", "data.records.delete"] } };
+const asStaff = { body: { permissions: ["data.records.read"] } };
+const noRole = { body: { permissions: [] } };
+const CUSTOMER_ID = "f294a1f4-3625-49e3-a491-2e9ecc71769e";
 
 test("GET /customers without a token is refused before HyphaBase is asked anything", async () => {
   const { call, calls } = await serverWith();
@@ -56,6 +63,7 @@ test("GET /customers with a token HyphaBase rejects is refused, and no customers
 test("GET /customers with a valid token returns the customers", async () => {
   const { call, calls } = await serverWith(
     { body: { user: sarah } },
+    asOwner,
     { body: { data: [{ id: "c1", name: "Dana Whitfield" }] } },
   );
 
@@ -65,8 +73,70 @@ test("GET /customers with a valid token returns the customers", async () => {
   assert.deepEqual(res.body.data, [{ id: "c1", name: "Dana Whitfield" }]);
   // Who is asking: the user's token. Reading the data: the server's secret key.
   assert.equal(calls[0].headers.Authorization, "Bearer user-token");
-  assert.equal(calls[1].headers.Authorization, "Bearer sk_test_1");
-  assert.match(calls[1].url, /\/api\/modules\/data\/customers\/records/);
+  assert.equal(calls[1].url, "http://api.test/api/permissions/me");
+  assert.equal(calls[1].headers.Authorization, "Bearer user-token");
+  assert.equal(calls[2].headers.Authorization, "Bearer sk_test_1");
+  assert.match(calls[2].url, /\/api\/modules\/data\/customers\/records/);
+});
+
+test("a signed-in user with no role is refused: signing in is not permission", async () => {
+  const { call, calls } = await serverWith({ body: { user: marcus } }, noRole);
+
+  const res = await call("/customers", { token: "user-token" });
+
+  assert.equal(res.status, 403);
+  assert.deepEqual(res.body, { error: "Your role does not allow this.", required_permission: "data.records.read" });
+  assert.equal(calls.length, 2, "no customers were read");
+});
+
+test("staff can read the customers", async () => {
+  const { call } = await serverWith({ body: { user: marcus } }, asStaff, { body: { data: [{ id: CUSTOMER_ID }] } });
+
+  assert.equal((await call("/customers", { token: "user-token" })).status, 200);
+});
+
+test("staff cannot delete a customer, and nothing is deleted", async () => {
+  const { call, calls } = await serverWith({ body: { user: marcus } }, asStaff);
+
+  const res = await call(`/customers/${CUSTOMER_ID}`, { method: "DELETE", token: "user-token" });
+
+  assert.equal(res.status, 403);
+  assert.equal(res.body.required_permission, "data.records.delete");
+  assert.ok(calls.every((c) => c.method !== "DELETE"), "HyphaBase was never asked to delete");
+});
+
+test("the owner can delete a customer", async () => {
+  const { call, calls } = await serverWith({ body: { user: sarah } }, asOwner, { status: 204 });
+
+  const res = await call(`/customers/${CUSTOMER_ID}`, { method: "DELETE", token: "user-token" });
+
+  assert.equal(res.status, 204);
+  assert.equal(calls[2].method, "DELETE");
+  assert.equal(calls[2].url, `http://api.test/api/modules/data/customers/records/${CUSTOMER_ID}`);
+  assert.equal(calls[2].headers.Authorization, "Bearer sk_test_1");
+});
+
+test("DELETE /customers/:id without a token is a 401, before any permission check", async () => {
+  const { call, calls } = await serverWith();
+
+  assert.equal((await call(`/customers/${CUSTOMER_ID}`, { method: "DELETE" })).status, 401);
+  assert.equal(calls.length, 0);
+});
+
+test("deleting a customer that does not exist is a 404", async () => {
+  const { call } = await serverWith({ body: { user: sarah } }, asOwner, { status: 404, body: { message: "No customers record with id x." } });
+
+  const res = await call(`/customers/${CUSTOMER_ID}`, { method: "DELETE", token: "user-token" });
+
+  assert.equal(res.status, 404);
+  assert.equal(res.body.error, "No such customer.");
+});
+
+test("an id that is not a record id is a 404 without asking HyphaBase", async () => {
+  const { call, calls } = await serverWith();
+
+  assert.equal((await call("/customers/not-an-id", { method: "DELETE", token: "user-token" })).status, 404);
+  assert.equal(calls.length, 0);
 });
 
 test("POST /login returns a token and the user, and keeps the refresh token on the server side", async () => {
@@ -97,13 +167,14 @@ test("POST /login without an email and password is a 400", async () => {
   assert.equal(calls.length, 0);
 });
 
-test("GET /me returns the signed-in user", async () => {
-  const { call } = await serverWith({ body: { user: { ...sarah, phone: null, locations: [{ id: "loc-1" }] } } });
+test("GET /me returns the signed-in user and what they may do", async () => {
+  const { call } = await serverWith({ body: { user: { ...sarah, phone: null, locations: [{ id: "loc-1" }] } } }, asStaff);
 
   const res = await call("/me", { token: "user-token" });
 
   assert.equal(res.status, 200);
   assert.deepEqual(res.body.user, sarah);
+  assert.deepEqual(res.body.permissions, ["data.records.read"]);
 });
 
 test("POST /logout revokes the token", async () => {
@@ -117,7 +188,7 @@ test("POST /logout revokes the token", async () => {
 });
 
 test("a HyphaBase failure becomes a 502, without leaking details", async () => {
-  const { call } = await serverWith({ body: { user: sarah } }, { status: 403, body: { message: "This API key does not have the 'data.records.read' scope." } });
+  const { call } = await serverWith({ body: { user: sarah } }, asOwner, { status: 403, body: { message: "This API key does not have the 'data.records.read' scope." } });
 
   const res = await call("/customers", { token: "user-token" });
 

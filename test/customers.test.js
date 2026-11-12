@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { addCustomer, CUSTOMERS, ensureCustomersCollection, getCustomer, listCustomers } from "../src/customers.js";
+import { addCustomer, CUSTOMERS, deleteCustomer, ensureCustomersCollection, getCustomer, listCustomers } from "../src/customers.js";
 import { createApi } from "../src/hyphabase.js";
 import { fakeFetch } from "./fake-fetch.js";
 
@@ -60,4 +60,13 @@ test("listCustomers returns the records, newest first", async () => {
 
   assert.deepEqual(await listCustomers(api), [{ id: "c1" }]);
   assert.equal(calls[0].url, "http://api.test/api/modules/data/customers/records?sort=-created_at");
+});
+
+test("deleteCustomer deletes one record by id", async () => {
+  const { api, calls } = apiWith({ status: 204 });
+
+  await deleteCustomer(api, "c1");
+
+  assert.equal(calls[0].method, "DELETE");
+  assert.equal(calls[0].url, "http://api.test/api/modules/data/customers/records/c1");
 });

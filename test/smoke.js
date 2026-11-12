@@ -5,7 +5,7 @@
  *
  * Defines the collection if needed, creates a customer, reads it back and
  * finds it in the list. It then deletes its "Smoke Test" customer if the key
- * has data.records.delete; this episode's key does not need that scope, so
+ * has data.records.delete (it does from episode 4); an older key lacks it, so
  * without it the record stays.
  */
 

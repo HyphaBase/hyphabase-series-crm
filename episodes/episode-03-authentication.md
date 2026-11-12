@@ -138,8 +138,8 @@ The smoke test runs the server against your real environment and checks each cla
 
 ## Known limits at this point
 
-- Every signed-in user can see every customer. Who may do what is episode 4, where Marcus joins.
+- Every signed-in user can see every customer. Who may do what is [episode 4](episode-04-permissions.md), where Marcus joins.
 - The server listens on `localhost` over plain HTTP. Put it behind HTTPS before anyone else uses it.
 - The client is a few terminal commands. The real frontend arrives with the SDK in episode 5.
 
-Next: episode 4, roles and permissions.
+Next: [episode 4, roles and permissions](episode-04-permissions.md).

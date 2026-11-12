@@ -3,7 +3,8 @@
  *
  *   npm run crm:customers
  *
- * Works only while you are signed in.
+ * Works only while you are signed in and, from episode 4, only if your
+ * role allows reading customers.
  */
 
 import { runClient } from "./session.js";

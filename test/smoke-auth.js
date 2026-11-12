@@ -6,8 +6,9 @@
  * Creates a throwaway user, starts the CRM server on a free port and proves
  * the claims the episode makes: no token, a made-up token, a wrong password
  * and a signed-out token are all refused; a signed-in user gets the customers.
- * The throwaway user is deleted afterwards if the key has users.delete;
- * this episode's key does not need that scope, so without it the user stays.
+ * The throwaway user is deleted afterwards if the key has users.delete.
+ * The CRM itself does not need that scope, but without it every run leaves a
+ * user behind, and a plan only allows so many.
  */
 
 import assert from "node:assert/strict";
@@ -17,6 +18,7 @@ import { after, test } from "node:test";
 import { addUser } from "../src/auth.js";
 import { ensureCustomersCollection } from "../src/customers.js";
 import { ApiError, createApi, loadConfig, requireLocation } from "../src/hyphabase.js";
+import { ensureRole, giveRole, ROLES } from "../src/roles.js";
 import { createApp } from "../src/server.js";
 import { createClient } from "../src/session.js";
 
@@ -36,6 +38,8 @@ test("episode 3: only a signed-in user can read the customers", async () => {
 
   const credentials = { email: `smoke-${Date.now().toString(36)}@brightsideclean.example`, password: `Smoke-${crypto.randomUUID()}` };
   const user = await addUser(api, locationId, { name: "Smoke Test", ...credentials });
+  // From episode 4 a signed-in user also needs a role that allows reading (test/smoke-roles.js).
+  await giveRole(api, locationId, user.id, (await ensureRole(api, locationId, ROLES.staff)).role.id);
 
   await assert.rejects(crm.request("/customers"), refusedWith(401), "no token");
   await assert.rejects(crm.request("/customers", { token: "made-up-token" }), refusedWith(401), "a made-up token");
