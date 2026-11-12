@@ -37,16 +37,16 @@ p { margin: 0; }
 .strong { font-weight: 500; }
 em.muted { font-style: normal; font-weight: 400; font-size: 12px; margin-left: 4px; }
 
-.center { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.center { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
 
 .card { background: #fff; border: 1px solid var(--gray-200); border-radius: var(--radius); box-shadow: var(--shadow); }
 
 /* Brand */
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; }
+.brand { flex: none; display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; }
 .brand-mark { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: var(--brand-500); color: #fff; font-weight: 700; }
 
 /* Top bar */
-.topbar { height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; background: #fff; border-bottom: 1px solid var(--gray-200); }
+.topbar { height: 60px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 28px; background: #fff; border-bottom: 1px solid var(--gray-200); }
 .who { display: flex; align-items: center; gap: 14px; }
 .who-name { color: var(--gray-700); font-weight: 500; }
 
@@ -56,7 +56,7 @@ em.muted { font-style: normal; font-weight: 400; font-size: 12px; margin-left: 4
 .hint { margin-top: 14px; font-size: 14px; }
 
 /* Buttons */
-.button { font: inherit; font-weight: 500; height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--gray-200); background: #fff; color: var(--gray-700); cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+.button { flex: none; white-space: nowrap; font: inherit; font-weight: 500; height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--gray-200); background: #fff; color: var(--gray-700); cursor: pointer; transition: background 0.15s, border-color 0.15s; }
 .button:hover { background: var(--gray-50); }
 .button:disabled { opacity: 0.6; cursor: default; }
 .button.primary { background: var(--brand-500); border-color: var(--brand-500); color: #fff; }
@@ -89,9 +89,11 @@ em.muted { font-style: normal; font-weight: 400; font-size: 12px; margin-left: 4
 .actions .button.ghost { height: 40px; }
 
 /* Table */
-.table-card { overflow: hidden; }
+/* A table wider than the screen scrolls sideways inside its card; the page itself never does. */
+.table-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .empty { padding: 40px 24px; text-align: center; background: none; }
 table { width: 100%; border-collapse: collapse; }
+th, td { white-space: nowrap; }
 th { text-align: left; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--gray-500); background: var(--gray-50); padding: 12px 20px; border-bottom: 1px solid var(--gray-200); }
 td { padding: 16px 20px; border-bottom: 1px solid var(--gray-100); color: var(--gray-700); }
 td.strong { color: var(--gray-900); }
@@ -106,5 +108,21 @@ tr.fresh td { animation: fresh 2.4s ease-out; }
 @media (max-width: 640px) {
   .grid { grid-template-columns: 1fr; }
   .topbar, .page { padding-left: 16px; padding-right: 16px; }
-  th:nth-child(3), td:nth-child(3) { display: none; }
+  .page { padding-top: 24px; }
+  .center { padding: 16px; }
+  .login, .add-form { padding: 20px; }
+  .who { gap: 10px; min-width: 0; }
+  .who-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  th, td { padding-left: 16px; padding-right: 16px; }
+  /* Under 16px, iOS zooms the page in when a field is focused. */
+  .field input, .field select { font-size: 16px; height: 44px; }
+  .button { height: 44px; }
+  .button.ghost { height: 40px; }
+  .actions .button { flex: 1; height: 44px; }
+  .page-head > div { min-width: 0; }
+}
+
+/* On the narrowest phones there is no room for the name next to the brand. */
+@media (max-width: 380px) {
+  .who-name { display: none; }
 }
