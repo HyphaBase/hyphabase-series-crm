@@ -1,19 +1,21 @@
 # Build a CRM with HyphaBase
 
-The example app from the **Build a CRM with HyphaBase** series. One small CRM, built one feature at a time on a [HyphaBase](https://hyphabase.com) backend. The app is **Brightside CRM**: the customer list for Brightside Cleaning, a home cleaning company with a few hundred regulars and locations in Portland and Salem. Each episode ends at a tagged commit you can check out and run.
+The example app from the **Build a CRM with HyphaBase** series. One small CRM, built one feature at a time on [HyphaBase](https://hyphabase.com), the Backend-as-a-Service for developers building multi-location business software. The app is **Brightside CRM**: the customer list for Brightside Cleaning, a home cleaning company with a few hundred regulars and locations in Portland and Salem. Each episode ends at a tagged commit you can check out and run.
 
-> **Status: pre-release.** The free sandbox is not open for signups yet, so you can read the code but not run it against your own backend today. [Get early access](https://hyphabase.com) and we'll email you when it opens.
+> **The sandbox is free and open by invitation.** Join the early-access list at [hyphabase.com](https://hyphabase.com) and we'll send you an invite code. Already have one? [Create your account](https://console.hyphabase.com/register) and run every episode against your own backend.
 
 ## Episodes
 
-| Episode | What gets built | Guide |
-| --- | --- | --- |
-| 1 | The backend: an app and its first location, with a dedicated database | [episode-01-backend](episodes/episode-01-backend.md) |
-| 2 | A Customers collection, and the first customer created and read through the API | [episode-02-customers](episodes/episode-02-customers.md) |
-| 3 | Sign-in: a first user, and a server that refuses anyone who is not signed in | [episode-03-authentication](episodes/episode-03-authentication.md) |
-| 4 | Roles: an Owner and a Staff role, and a server that checks what each person may do | [episode-04-permissions](episodes/episode-04-permissions.md) |
-| 5 | The SDK and a real frontend: sign in, see the customers and add one, in a browser | [episode-05-sdk-frontend](episodes/episode-05-sdk-frontend.md) |
-| 6 | Editing and deleting customers | planned |
+| Episode | What gets built | Guide | Article |
+| --- | --- | --- | --- |
+| 1 | The backend: an app and its first location, with a dedicated database | [episode-01-backend](episodes/episode-01-backend.md) | [Database per tenant vs. shared database](https://hyphabase.com/blog/database-per-tenant-vs-shared-database) |
+| 2 | A Customers collection, and the first customer created and read through the API | [episode-02-customers](episodes/episode-02-customers.md) | [A CRUD API without the boilerplate](https://hyphabase.com/blog/crud-api-without-boilerplate) |
+| 3 | Sign-in: a first user, and a server that refuses anyone who is not signed in | [episode-03-authentication](episodes/episode-03-authentication.md) | [Authentication vs. authorization](https://hyphabase.com/blog/authentication-vs-authorization-saas) |
+| 4 | Roles: an Owner and a Staff role, and a server that checks what each person may do | [episode-04-permissions](episodes/episode-04-permissions.md) | coming soon |
+| 5 | The SDK and a real frontend: sign in, see the customers and add one, in a browser | [episode-05-sdk-frontend](episodes/episode-05-sdk-frontend.md) | coming soon |
+| 6 | Editing and deleting customers | planned | |
+
+To see the code as it stood at the end of an episode, check out its tag: `episode-02-customers`, `episode-03-authentication`, `episode-04-permissions` or `episode-05-sdk-frontend`. Episode 1 is all console, so it has no tag.
 
 ## Run it
 
@@ -132,6 +134,12 @@ npm run smoke:web    # the built web app against the environment in .env
 ```
 
 The smoke test creates three test users and a test customer and removes them when it is done. Removing the users needs the `users.delete` scope on the key, which the CRM itself does not use; without it they stay, and they count towards your plan's user limit.
+
+## More
+
+- [Documentation](https://docs.hyphabase.com) and the [API reference](https://api.hyphabase.com/docs/api)
+- The SDK: [`hyphabase`](https://www.npmjs.com/package/hyphabase) on npm
+- New episodes are announced on [X](https://x.com/hyphabase) and [LinkedIn](https://www.linkedin.com/company/hyphabase)
 
 ## License
 
