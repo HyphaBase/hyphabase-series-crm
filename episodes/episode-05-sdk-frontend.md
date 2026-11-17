@@ -35,7 +35,7 @@ Then install the web app's dependencies (the earlier episodes had none):
 npm --prefix web install
 ```
 
-> The HyphaBase SDK is not on npm yet. This repository carries a packed copy in [`vendor/`](../vendor), and `web/package.json` installs it from there. When the SDK is published, that line becomes a normal `hyphabase` dependency.
+That also installs the HyphaBase SDK, the [`hyphabase`](https://www.npmjs.com/package/hyphabase) package on npm. In a project of your own it is `npm install hyphabase`.
 
 ## What changed
 

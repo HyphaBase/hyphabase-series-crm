@@ -90,7 +90,7 @@ npm run web               # http://localhost:3010
 
 Sign in as Sarah to see the customers and add one. Sign in as Marcus and the list is there, the **Add customer** button is not.
 
-The web app uses the HyphaBase SDK. The SDK is not on npm yet, so this repository carries a packed copy in `vendor/`.
+The web app uses the HyphaBase SDK, the [`hyphabase`](https://www.npmjs.com/package/hyphabase) package on npm.
 
 ## What this is, and isn't, so far
 
