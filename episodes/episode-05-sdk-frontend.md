@@ -244,6 +244,5 @@ It creates two test users and one customer, and removes them when it is done.
 - The list shows the newest 100 customers. There is no search or paging yet.
 - A person can add a customer but not edit or delete one from the screen. The delete route exists and is tested; the buttons come next.
 - `next start` marks the cookie `Secure`. Chrome and Firefox accept that on `http://localhost`; Safari may not, so use `npm run web` there.
-- The SDK is at 0.0.1 and not published yet.
 
 Next: episode 6, editing and deleting customers.
