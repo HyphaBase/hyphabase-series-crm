@@ -12,7 +12,7 @@ The example app from the **Build a CRM with HyphaBase** series. One small CRM, b
 | 2 | A Customers collection, and the first customer created and read through the API | [episode-02-customers](episodes/episode-02-customers.md) | [A CRUD API without the boilerplate](https://hyphabase.com/blog/crud-api-without-boilerplate) |
 | 3 | Sign-in: a first user, and a server that refuses anyone who is not signed in | [episode-03-authentication](episodes/episode-03-authentication.md) | [Authentication vs. authorization](https://hyphabase.com/blog/authentication-vs-authorization-saas) |
 | 4 | Roles: an Owner and a Staff role, and a server that checks what each person may do | [episode-04-permissions](episodes/episode-04-permissions.md) | [Role-based access control in SaaS](https://hyphabase.com/blog/role-based-access-control-saas) |
-| 5 | The SDK and a real frontend: sign in, see the customers and add one, in a browser | [episode-05-sdk-frontend](episodes/episode-05-sdk-frontend.md) | coming soon |
+| 5 | The SDK and a real frontend: sign in, see the customers and add one, in a browser | [episode-05-sdk-frontend](episodes/episode-05-sdk-frontend.md) | [Connect a Next.js frontend to a backend API](https://hyphabase.com/blog/connect-nextjs-frontend-to-backend-typescript) |
 | 6 | Editing and deleting customers | planned | |
 
 To see the code as it stood at the end of an episode, check out its tag: `episode-02-customers`, `episode-03-authentication`, `episode-04-permissions` or `episode-05-sdk-frontend`. Episode 1 is all console, so it has no tag.
