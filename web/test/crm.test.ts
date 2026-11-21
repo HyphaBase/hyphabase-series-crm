@@ -94,7 +94,7 @@ describe("who am I", () => {
 
     expect(await crm.me(session)).toEqual({
       status: 200,
-      body: { user: { id: "u-marcus", name: "Marcus Bell", email: "marcus@brightsideclean.example" }, permissions: ["data.records.read"] },
+      body: { user: { id: "u-marcus", name: "Marcus Bell", email: "marcus@brightsideclean.example" }, permissions: ["data.records.read", "data.records.update"] },
     });
     expect(hyphabase.calls.every((call) => call.bearer === "token-1" && call.location === PORTLAND)).toBe(true);
   });
@@ -105,7 +105,7 @@ describe("who am I", () => {
 
     const reply = await crm.me(session);
 
-    expect(reply.body).toMatchObject({ user: { name: "Marcus Bell" }, permissions: ["data.records.read"] });
+    expect(reply.body).toMatchObject({ user: { name: "Marcus Bell" }, permissions: ["data.records.read", "data.records.update"] });
   });
 
   it("answers 401 and forgets the session once HyphaBase no longer accepts it", async () => {
@@ -264,12 +264,127 @@ describe("adding a customer", () => {
   });
 });
 
-describe("deleting a customer", () => {
-  it("is refused for staff, and the customer is still there", async () => {
+describe("editing a customer", () => {
+  const dana = { id: DANA, name: "Dana Whitfield", email: "dana@example.com", phone: "555-0142", status: "lead" };
+
+  it("is refused for someone who can only read, and nothing is changed", async () => {
+    const reader = { ...people.marcus(), permissions: ["data.records.read"] };
+    const { crm, session, hyphabase } = await signedIn("marcus", [reader]);
+
+    const reply = await crm.updateCustomer(session, DANA, { phone: "555-0143" });
+
+    expect(reply).toEqual({ status: 403, body: { error: "Your role does not allow this.", required_permission: "data.records.update" } });
+    expect(hyphabase.records[0]).toEqual(dana);
+    expect(dataCalls(hyphabase.calls)).toEqual([]);
+  });
+
+  it("works for staff, and changes only the field that was sent", async () => {
+    const { crm, session, hyphabase, log } = await signedIn("marcus");
+
+    const reply = await crm.updateCustomer(session, DANA, { phone: "555-0143" });
+
+    expect(reply).toEqual({ status: 200, body: { data: { ...dana, phone: "555-0143" } } });
+    expect(hyphabase.calls.at(-1)).toMatchObject({ method: "PATCH", path: `/api/modules/data/customers/records/${DANA}`, bearer: SECRET_KEY, body: { phone: "555-0143" } });
+    expect(hyphabase.calls.at(-1)?.body).toEqual({ phone: "555-0143" });
+    expect(log).toContain(`marcus@brightsideclean.example updated customer ${DANA}`);
+  });
+
+  it("works for the owner, with every field at once", async () => {
+    const { crm, session, hyphabase } = await signedIn("sarah");
+
+    const reply = await crm.updateCustomer(session, DANA, { name: " Dana Whitfield-Ross ", email: " Dana.Ross@Example.com ", phone: "555-0150", status: "active" });
+
+    const changed = { name: "Dana Whitfield-Ross", email: "dana.ross@example.com", phone: "555-0150", status: "active" };
+    expect(reply).toEqual({ status: 200, body: { data: { id: DANA, ...changed } } });
+    expect(hyphabase.records[0]).toEqual({ id: DANA, ...changed });
+  });
+
+  it.each(["", "   ", null])("clears the phone number when it is sent empty (%j)", async (phone) => {
     const { crm, session, hyphabase } = await signedIn("marcus");
 
-    expect((await crm.deleteCustomer(session, DANA)).status).toBe(403);
+    const reply = await crm.updateCustomer(session, DANA, { phone });
+
+    expect(reply.body).toEqual({ data: { ...dana, phone: null } });
+    expect(hyphabase.calls.at(-1)?.body).toEqual({ phone: null });
+  });
+
+  it("sends only the four customer fields on, whatever else the browser adds", async () => {
+    const { crm, session, hyphabase } = await signedIn("marcus");
+
+    await crm.updateCustomer(session, DANA, { status: "active", id: "another-id", owner_id: "u-marcus", deleted_at: "2020-01-01" });
+
+    expect(hyphabase.calls.at(-1)?.body).toEqual({ status: "active" });
+  });
+
+  it.each([
+    [{ name: "" }, { name: "Enter a name." }],
+    [{ name: "x".repeat(201) }, { name: "Keep the name under 200 characters." }],
+    [{ email: "" }, { email: "Enter an email address." }],
+    [{ email: "not-an-email" }, { email: "Enter a valid email address." }],
+    [{ phone: "5".repeat(51) }, { phone: "Keep the phone number under 50 characters." }],
+    [{ status: "vip" }, { status: "Choose lead, active or inactive." }],
+    [{ status: "" }, { status: "Choose lead, active or inactive." }],
+    [{ name: null, email: { $ne: "" } }, { name: "Enter a name.", email: "Enter an email address." }],
+  ])("refuses a change that would leave a bad customer (%j)", async (body, errors) => {
+    const { crm, session, hyphabase } = await signedIn("sarah");
+
+    expect(await crm.updateCustomer(session, DANA, body)).toEqual({ status: 422, body: { error: "Check the highlighted fields.", errors } });
+    expect(dataCalls(hyphabase.calls)).toEqual([]);
+  });
+
+  it.each([{}, { nickname: "D" }, "not an object", undefined])("refuses a request that changes nothing (%j)", async (body) => {
+    const { crm, session, hyphabase } = await signedIn("sarah");
+
+    expect(await crm.updateCustomer(session, DANA, body)).toEqual({ status: 422, body: { error: "Send at least one field to change." } });
+    expect(dataCalls(hyphabase.calls)).toEqual([]);
+  });
+
+  it("checks the role before the input", async () => {
+    const reader = { ...people.marcus(), permissions: ["data.records.read"] };
+    const { crm, session } = await signedIn("marcus", [reader]);
+
+    expect((await crm.updateCustomer(session, DANA, {})).status).toBe(403);
+  });
+
+  it("says so when the new email belongs to another customer", async () => {
+    const { crm, session, hyphabase } = await signedIn("sarah");
+    await crm.addCustomer(session, LIAM);
+
+    expect(await crm.updateCustomer(session, DANA, { email: LIAM.email })).toEqual({
+      status: 409,
+      body: { error: "A customer with that email already exists.", errors: { email: "A customer with that email already exists." } },
+    });
+    expect(hyphabase.records.find((r) => r.id === DANA)).toEqual(dana);
+  });
+
+  it("answers 404 for a customer that is not there", async () => {
+    const { crm, session } = await signedIn("marcus");
+
+    expect(await crm.updateCustomer(session, "c0000000-0000-4000-8000-00000000ffff", { phone: "555-0143" })).toEqual({ status: 404, body: { error: "No such customer." } });
+  });
+
+  it("answers 404 for an id that cannot be a customer, without asking HyphaBase", async () => {
+    const { crm, session, hyphabase } = await signedIn("marcus");
+
+    expect((await crm.updateCustomer(session, "../collections", { phone: "555-0143" })).status).toBe(404);
+    expect(dataCalls(hyphabase.calls)).toEqual([]);
+  });
+
+  it("is refused with no session before anything else", async () => {
+    const { crm, hyphabase } = setup();
+
+    expect((await crm.updateCustomer(memoryStorage(), DANA, { phone: "555-0143" })).status).toBe(401);
+    expect(hyphabase.calls).toHaveLength(0);
+  });
+});
+
+describe("deleting a customer", () => {
+  it("is refused for staff, who can edit but not delete, and the customer is still there", async () => {
+    const { crm, session, hyphabase } = await signedIn("marcus");
+
+    expect(await crm.deleteCustomer(session, DANA)).toEqual({ status: 403, body: { error: "Your role does not allow this.", required_permission: "data.records.delete" } });
     expect(hyphabase.records).toHaveLength(1);
+    expect(dataCalls(hyphabase.calls)).toEqual([]);
   });
 
   it("works for the owner", async () => {

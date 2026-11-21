@@ -13,9 +13,10 @@ The example app from the **Build a CRM with HyphaBase** series. One small CRM, b
 | 3 | Sign-in: a first user, and a server that refuses anyone who is not signed in | [episode-03-authentication](episodes/episode-03-authentication.md) | [Authentication vs. authorization](https://hyphabase.com/blog/authentication-vs-authorization-saas) |
 | 4 | Roles: an Owner and a Staff role, and a server that checks what each person may do | [episode-04-permissions](episodes/episode-04-permissions.md) | [Role-based access control in SaaS](https://hyphabase.com/blog/role-based-access-control-saas) |
 | 5 | The SDK and a real frontend: sign in, see the customers and add one, in a browser | [episode-05-sdk-frontend](episodes/episode-05-sdk-frontend.md) | [Connect a Next.js frontend to a backend API](https://hyphabase.com/blog/connect-nextjs-frontend-to-backend-typescript) |
-| 6 | Editing and deleting customers | planned | |
+| 6 | Editing and deleting customers: Staff can correct a customer, only the Owner can remove one | [episode-06-update-delete](episodes/episode-06-update-delete.md) | coming soon |
+| 7 | Searching, filtering and paging through the customer list | planned | |
 
-To see the code as it stood at the end of an episode, check out its tag: `episode-02-customers`, `episode-03-authentication`, `episode-04-permissions` or `episode-05-sdk-frontend`. Episode 1 is all console, so it has no tag.
+To see the code as it stood at the end of an episode, check out its tag: `episode-02-customers`, `episode-03-authentication`, `episode-04-permissions`, `episode-05-sdk-frontend` or `episode-06-update-delete`. Episode 1 is all console, so it has no tag.
 
 ## Run it
 
@@ -94,9 +95,18 @@ Sign in as Sarah to see the customers and add one. Sign in as Marcus and the lis
 
 The web app uses the HyphaBase SDK, the [`hyphabase`](https://www.npmjs.com/package/hyphabase) package on npm.
 
+From episode 6 customers can be edited and deleted from the screen, and the Staff role may edit. The key needs the `data.records.update` and `roles.update` scopes (see [the guide](episodes/episode-06-update-delete.md)):
+
+```bash
+npm run roles:setup       # adds the edit permission to the roles you already have
+npm run web
+```
+
+Sarah has **Edit** and **Delete** on every row. Marcus has **Edit** only, and a delete he sends by hand is refused with 403.
+
 ## What this is, and isn't, so far
 
-After episode 5 the CRM has a data foundation (a real table with typed fields, a unique email and a default status), a sign-in, roles, and screens: a Next.js app whose pages hold no key and no token, and whose server refuses every request that does not come from a signed-in user whose role allows it. A person can see the customers and add one. Editing and deleting from the screen come next.
+After episode 6 the CRM has a data foundation (a real table with typed fields, a unique email and a default status), a sign-in, roles, and screens: a Next.js app whose pages hold no key and no token, and whose server refuses every request that does not come from a signed-in user whose role allows it. A person can see the customers, add one, correct one and, with the Owner role, delete one. There is no search or paging yet, and a deleted customer cannot be brought back from the screen.
 
 ## Keep your secret key secret
 
@@ -117,6 +127,7 @@ In the web app only `web/lib/server.ts` reads the secret key. It is marked serve
 | `This API key does not have access to the requested location.` | In the console, open the key's **Access** settings and grant it the location. |
 | `email: The email has already been taken.` | That user already exists. Sign in, or pass a different `--email` to `user:add`. |
 | `403 Your role does not allow this.` | Episode 4 on: you are signed in, but your role lacks the permission. `npm run crm:me` shows what you have; `npm run role:give` gives a user a role. |
+| A person with the Staff role has no **Edit** button | Episode 6 on: the roles are still episode 4's. Add the `roles.update` scope to the key and run `npm run roles:setup` again. |
 | `No user with the email ...` | `role:give` could not find that user. Create them with `npm run user:add` first. |
 | `Active employees limit reached (5 of 5 used).` | Your plan's user limit. `npm run smoke` creates three test users while it runs and removes them afterwards only if the key has the `users.delete` scope. |
 | `Could not reach the CRM server` | `npm run serve` is not running, or `CRM_URL` / `PORT` do not match. |
@@ -133,7 +144,7 @@ npm run web:test     # the web app's unit tests, no network
 npm run smoke:web    # the built web app against the environment in .env
 ```
 
-The smoke test creates three test users and a test customer and removes them when it is done. Removing the users needs the `users.delete` scope on the key, which the CRM itself does not use; without it they stay, and they count towards your plan's user limit.
+The smoke tests create a few test users and test customers and remove them when they are done. Removing the users needs the `users.delete` scope on the key, which the CRM itself does not use; without it they stay, and they count towards your plan's user limit.
 
 ## More
 

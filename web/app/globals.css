@@ -11,6 +11,7 @@
   --gray-900: #121826;
   --red-50: #fef3f2;
   --red-600: #d92d20;
+  --red-700: #b42318;
   --amber-50: #fffaeb;
   --amber-700: #b54708;
   --radius: 12px;
@@ -35,6 +36,7 @@ p { margin: 0; }
 
 .muted { color: var(--gray-500); }
 .strong { font-weight: 500; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 em.muted { font-style: normal; font-weight: 400; font-size: 12px; margin-left: 4px; }
 
 .center { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
@@ -62,6 +64,9 @@ em.muted { font-style: normal; font-weight: 400; font-size: 12px; margin-left: 4
 .button.primary { background: var(--brand-500); border-color: var(--brand-500); color: #fff; }
 .button.primary:hover { background: var(--brand-600); border-color: var(--brand-600); }
 .button.ghost { height: 36px; }
+.button.small { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 14px; }
+.button.danger { background: var(--red-600); border-color: var(--red-600); color: #fff; }
+.button.danger:hover { background: var(--red-700); border-color: var(--red-700); }
 .button.wide { width: 100%; margin-top: 8px; }
 .button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--brand-50); border-color: var(--brand-500); }
 
@@ -81,7 +86,7 @@ em.muted { font-style: normal; font-weight: 400; font-size: 12px; margin-left: 4
 .login h1 + .muted { margin-top: -12px; }
 .notice-card { padding: 24px; display: flex; flex-direction: column; gap: 16px; max-width: 400px; }
 
-/* Add customer */
+/* Add or edit a customer */
 .add-form { padding: 24px; margin-bottom: 20px; }
 .add-form .error { margin-bottom: 16px; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -101,6 +106,12 @@ tr:last-child td { border-bottom: 0; }
 tr.fresh td { animation: fresh 2.4s ease-out; }
 @keyframes fresh { from { background: var(--brand-50); } to { background: transparent; } }
 
+/* Edit and Delete, or the question Delete asks first. */
+td.row-actions { text-align: right; padding-top: 10px; padding-bottom: 10px; }
+.row-actions .button + .button { margin-left: 8px; }
+.confirm { margin-right: 12px; font-weight: 500; color: var(--gray-900); }
+.list-error { margin-bottom: 16px; }
+
 .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 13px; font-weight: 500; text-transform: capitalize; background: var(--gray-100); color: var(--gray-700); }
 .badge.active { background: var(--brand-50); color: var(--brand-700); }
 .badge.lead { background: var(--amber-50); color: var(--amber-700); }
@@ -118,6 +129,7 @@ tr.fresh td { animation: fresh 2.4s ease-out; }
   .field input, .field select { font-size: 16px; height: 44px; }
   .button { height: 44px; }
   .button.ghost { height: 40px; }
+  .button.small { height: 36px; }
   .actions .button { flex: 1; height: 44px; }
   .page-head > div { min-width: 0; }
 }

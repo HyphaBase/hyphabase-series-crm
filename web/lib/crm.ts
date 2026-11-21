@@ -8,6 +8,7 @@
  *   me              who am I, and what may I do
  *   listCustomers   needs data.records.read
  *   addCustomer     needs data.records.create
+ *   updateCustomer  needs data.records.update
  *   deleteCustomer  needs data.records.delete
  *   signOut         revoke the session
  *
@@ -17,7 +18,7 @@
  */
 
 import { createClient, HyphaBaseError, memoryStorage, type SessionStorageAdapter } from "hyphabase";
-import { parseCustomer, toCustomer, type Customer, type CustomerFields } from "./customers";
+import { parseCustomer, parseCustomerChanges, toCustomer, type Customer, type CustomerFields } from "./customers";
 import { CAN, type Permission } from "./permissions";
 
 export { CAN };
@@ -53,6 +54,15 @@ class Refusal extends Error {
 }
 
 const refuse = (status: number, body: Record<string, unknown>) => new Refusal({ status, body });
+
+const noSuchCustomer = () => refuse(404, { error: "No such customer." });
+
+/** HyphaBase refusing a record because its email is taken: the collection's only unique field. */
+function emailTaken(error: unknown): Refusal | null {
+  if (!(error instanceof HyphaBaseError && error.status === 422 && error.body?.errors?.record)) return null;
+  const taken = "A customer with that email already exists.";
+  return refuse(409, { error: taken, errors: { email: taken } });
+}
 
 export function createCrm(config: CrmConfig) {
   const { apiUrl, secretKey, publishableKey, locationId, log = () => {} } = config;
@@ -167,26 +177,41 @@ export function createCrm(config: CrmConfig) {
         try {
           customer = toCustomer((await customers.create(parsed.customer)).data);
         } catch (error) {
-          // The collection's only unique field is the email.
-          if (error instanceof HyphaBaseError && error.status === 422 && error.body?.errors?.record) {
-            const taken = "A customer with that email already exists.";
-            throw refuse(409, { error: taken, errors: { email: taken } });
-          }
-          throw error;
+          throw emailTaken(error) ?? error;
         }
         log(`${user.email} added customer ${customer.id}`);
         return { status: 201, body: { data: customer } };
       }),
 
+    updateCustomer: (session: SessionStorageAdapter, id: string, input: unknown) =>
+      answer("update customer", async () => {
+        const user = await requirePermission(session, CAN.updateCustomers);
+        if (!CUSTOMER_ID.test(id)) throw noSuchCustomer();
+
+        const parsed = parseCustomerChanges(input);
+        if (!parsed.ok) throw refuse(422, { error: "Check the highlighted fields.", errors: parsed.errors });
+        if (Object.keys(parsed.changes).length === 0) throw refuse(422, { error: "Send at least one field to change." });
+
+        let customer: Customer;
+        try {
+          customer = toCustomer((await customers.update(id, parsed.changes)).data);
+        } catch (error) {
+          if (error instanceof HyphaBaseError && error.status === 404) throw noSuchCustomer();
+          throw emailTaken(error) ?? error;
+        }
+        log(`${user.email} updated customer ${id}`);
+        return { status: 200, body: { data: customer } };
+      }),
+
     deleteCustomer: (session: SessionStorageAdapter, id: string) =>
       answer("delete customer", async () => {
         const user = await requirePermission(session, CAN.deleteCustomers);
-        if (!CUSTOMER_ID.test(id)) throw refuse(404, { error: "No such customer." });
+        if (!CUSTOMER_ID.test(id)) throw noSuchCustomer();
 
         try {
           await customers.delete(id);
         } catch (error) {
-          if (error instanceof HyphaBaseError && error.status === 404) throw refuse(404, { error: "No such customer." });
+          if (error instanceof HyphaBaseError && error.status === 404) throw noSuchCustomer();
           throw error;
         }
         log(`${user.email} deleted customer ${id}`);

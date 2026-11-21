@@ -2,6 +2,7 @@
 export const CAN = {
   readCustomers: "data.records.read",
   addCustomers: "data.records.create",
+  updateCustomers: "data.records.update",
   deleteCustomers: "data.records.delete",
 } as const;
 

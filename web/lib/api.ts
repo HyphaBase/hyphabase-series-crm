@@ -5,7 +5,7 @@
  * itself.
  */
 
-import type { Customer, CustomerErrors, CustomerInput } from "./customers";
+import type { Customer, CustomerChanges, CustomerErrors, CustomerInput } from "./customers";
 
 export interface Me {
   user: { id: string; name: string; email: string };
@@ -54,4 +54,6 @@ export const api = {
   signOut: () => call<null>("POST", "/api/logout"),
   customers: async () => (await call<{ data: Customer[] }>("GET", "/api/customers")).data,
   addCustomer: async (customer: CustomerInput) => (await call<{ data: Customer }>("POST", "/api/customers", customer)).data,
+  updateCustomer: async (id: string, changes: CustomerChanges) => (await call<{ data: Customer }>("PATCH", `/api/customers/${id}`, changes)).data,
+  deleteCustomer: (id: string) => call<null>("DELETE", `/api/customers/${id}`),
 };

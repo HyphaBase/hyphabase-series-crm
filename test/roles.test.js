@@ -10,9 +10,9 @@ const apiWith = (...responses) => {
   return { api: createApi({ url: "http://api.test", key: "sk_test_1", fetch }), calls };
 };
 
-test("staff can read customers and nothing else; the owner can also add and delete", () => {
-  assert.deepEqual(ROLES.staff.permissions, [CAN.readCustomers]);
-  assert.ok(ROLES.owner.permissions.includes(CAN.deleteCustomers));
+test("staff can read and edit customers and nothing else; the owner can also add and delete", () => {
+  assert.deepEqual(ROLES.staff.permissions, [CAN.readCustomers, CAN.updateCustomers]);
+  assert.deepEqual(ROLES.owner.permissions, [CAN.readCustomers, CAN.addCustomers, CAN.updateCustomers, CAN.deleteCustomers]);
   assert.ok(!ROLES.staff.permissions.includes(CAN.deleteCustomers));
 });
 
@@ -35,8 +35,25 @@ test("ensureRole finds an existing role by name and does not create a second one
   const result = await ensureRole(api, "loc-1", ROLES.staff);
 
   assert.equal(result.created, false);
+  assert.equal(result.updated, false);
   assert.equal(result.role.id, "r1");
   assert.equal(calls.length, 1);
+});
+
+test("ensureRole adds the permissions an existing role is missing, and keeps the ones it has", async () => {
+  const fromEpisode4 = { id: "r1", name: "Staff", permissions: [CAN.readCustomers, "files.view"] };
+  const permissions = [CAN.readCustomers, "files.view", CAN.updateCustomers];
+  const { api, calls } = apiWith({ body: { data: [fromEpisode4] } }, { body: { data: { ...fromEpisode4, permissions } } });
+
+  const result = await ensureRole(api, "loc-1", ROLES.staff);
+
+  assert.equal(result.created, false);
+  assert.equal(result.updated, true);
+  assert.deepEqual(result.role.permissions, permissions);
+  assert.equal(calls[1].method, "PATCH");
+  assert.equal(calls[1].url, "http://api.test/api/modules/organizations/roles/r1");
+  assert.equal(calls[1].headers["X-Location-Id"], "loc-1");
+  assert.deepEqual(calls[1].body, { permissions });
 });
 
 test("findUser matches the whole email, not part of it", async () => {
