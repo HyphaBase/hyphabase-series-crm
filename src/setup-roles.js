@@ -3,8 +3,9 @@
  *
  *   npm run roles:setup
  *
- * Two roles: Owner (read, add and delete customers) and Staff (read only).
- * Safe to run again; existing roles are left as they are.
+ * Two roles: Owner (read, add, edit and delete customers) and Staff (read
+ * and edit). Editing arrived in episode 6. Safe to run again: a role that
+ * is already there only gains the permissions it is missing.
  */
 
 import { requireLocation, run } from "./hyphabase.js";
@@ -14,8 +15,8 @@ run(async (api, config) => {
   const locationId = requireLocation(config);
 
   for (const definition of Object.values(ROLES)) {
-    const { created, role } = await ensureRole(api, locationId, definition);
-    console.log(`${created ? "Created" : "Already there:"} role ${role.name}`);
+    const { created, updated, role } = await ensureRole(api, locationId, definition);
+    console.log(`${created ? "Created" : updated ? "Updated" : "Already there:"} role ${role.name}`);
     for (const permission of role.permissions) console.log(`  ${permission}`);
   }
 });

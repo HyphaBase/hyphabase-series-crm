@@ -1,5 +1,5 @@
 /**
- * End-to-end check of episode 5 against a real HyphaBase environment, using .env:
+ * End-to-end check of episodes 5 and 6 against a real HyphaBase environment, using .env:
  *
  *   npm run smoke:web
  *
@@ -7,10 +7,12 @@
  * browser does, keeping the session cookie by hand. It proves the claims
  * the episode makes: no cookie and a made-up cookie get nothing; staff can
  * read but not add; the owner can add; bad input and a duplicate email are
- * refused with a message per field; signing out ends the session at
- * HyphaBase; and the secret key is in nothing the browser can download.
+ * refused with a message per field; staff can edit a customer but not
+ * delete one, and the customer survives the attempt; the owner can delete;
+ * signing out ends the session at HyphaBase; and the secret key is in
+ * nothing the browser can download.
  *
- * Creates two throwaway users and one customer, and removes them afterwards
+ * Creates two throwaway users and two customers, and removes them afterwards
  * (the users only if the key has users.delete, see test/smoke-auth.js).
  */
 
@@ -84,7 +86,7 @@ async function filesUnder(dir) {
   return entries.filter((entry) => entry.isFile()).map((entry) => path.join(entry.parentPath, entry.name));
 }
 
-test("episode 5: the web app", async () => {
+test("episodes 5 and 6: the web app", async () => {
   await ensureCustomersCollection(api);
   await untilReady();
 
@@ -101,6 +103,7 @@ test("episode 5: the web app", async () => {
   const owner = await person("owner", ownerRole);
   const staff = await person("staff", staffRole);
   const customerEmail = `smoke-web-${run}@example.com`;
+  const otherEmail = `smoke-web-other-${run}@example.com`;
 
   try {
     // Nobody: no cookie, then a cookie somebody made up.
@@ -140,6 +143,35 @@ test("episode 5: the web app", async () => {
     const seen = await marcus.request("GET", "/api/customers");
     assert.ok(seen.body.data.some((c) => c.id === added.body.data.id), "staff sees the new customer");
 
+    // Episode 6. Staff fixes one field; the others stay as they were.
+    const customerPath = `/api/customers/${added.body.data.id}`;
+    const fixed = await marcus.request("PATCH", customerPath, { phone: "555-0143" });
+    assert.equal(fixed.status, 200, "staff can edit");
+    assert.deepEqual(fixed.body.data, { ...added.body.data, phone: "555-0143" });
+    const badEdit = await marcus.request("PATCH", customerPath, { email: "not-an-email" });
+    assert.equal(badEdit.status, 422);
+    assert.deepEqual(Object.keys(badEdit.body.errors), ["email"]);
+    assert.equal((await marcus.request("PATCH", customerPath, {})).status, 422, "an edit has to change something");
+
+    // Staff cannot delete, and the customer survives the attempt.
+    const noDelete = await marcus.request("DELETE", customerPath);
+    assert.equal(noDelete.status, 403, "staff cannot delete");
+    assert.equal(noDelete.body.required_permission, "data.records.delete");
+    assert.ok((await marcus.request("GET", "/api/customers")).body.data.some((c) => c.id === added.body.data.id), "the customer is still there");
+
+    // Owner: edits, cannot take another customer's email, deletes.
+    const cleared = await sarah.request("PATCH", customerPath, { status: "active", phone: "" });
+    assert.equal(cleared.status, 200);
+    assert.deepEqual(cleared.body.data, { ...added.body.data, status: "active", phone: null });
+    assert.equal((await sarah.request("POST", "/api/customers", { name: "Smoke Other", email: otherEmail })).status, 201);
+    assert.equal((await sarah.request("PATCH", customerPath, { email: otherEmail })).status, 409, "an email another customer has");
+    assert.equal((await sarah.request("DELETE", customerPath)).status, 204, "the owner can delete");
+    assert.ok(!(await marcus.request("GET", "/api/customers")).body.data.some((c) => c.id === added.body.data.id), "the customer is gone for everyone");
+    assert.equal((await sarah.request("DELETE", customerPath)).status, 404, "deleting twice");
+    assert.equal((await marcus.request("PATCH", customerPath, { phone: "555-0144" })).status, 404, "editing a deleted customer");
+    assert.equal((await stranger.request("PATCH", customerPath, { phone: "555-0145" })).status, 401);
+    assert.equal((await stranger.request("DELETE", customerPath)).status, 401);
+
     // Another site cannot use Sarah's browser.
     const forged = await fetch(`${origin}/api/customers`, { method: "POST", headers: { Origin: "https://elsewhere.example", "Content-Type": "application/json" }, body: "{}" });
     assert.equal(forged.status, 403);
@@ -162,7 +194,7 @@ test("episode 5: the web app", async () => {
     }
   } finally {
     for (const customer of await listCustomers(api)) {
-      if (customer.email === customerEmail) await deleteCustomer(api, customer.id);
+      if ([customerEmail, otherEmail].includes(customer.email)) await deleteCustomer(api, customer.id);
     }
     for (const { user } of [owner, staff]) {
       try {

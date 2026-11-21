@@ -32,7 +32,7 @@ export const people = {
     name: "Sarah Mitchell",
     email: "sarah@brightsideclean.example",
     password: "correct-password",
-    permissions: ["data.records.read", "data.records.create", "data.records.delete"],
+    permissions: ["data.records.read", "data.records.create", "data.records.update", "data.records.delete"],
     locations: [PORTLAND],
   }),
   marcus: (): FakeUser => ({
@@ -40,7 +40,7 @@ export const people = {
     name: "Marcus Bell",
     email: "marcus@brightsideclean.example",
     password: "correct-password",
-    permissions: ["data.records.read"],
+    permissions: ["data.records.read", "data.records.update"],
     locations: [PORTLAND],
   }),
 };
@@ -121,6 +121,15 @@ export function fakeHyphaBase(users: FakeUser[] = [people.sarah(), people.marcus
         const created = { id: `c0000000-0000-4000-8000-00000000000${records.length + 1}`, phone: null, status: "lead", ...call.body };
         records.unshift(created);
         return json(201, { data: created });
+      }
+      if (call.method === "PATCH" && id) {
+        const existing = records.find((r) => r.id === id);
+        if (!existing) return json(404, { message: "Record not found." });
+        if (call.body.email !== undefined && records.some((r) => r.id !== id && r.email === call.body.email)) {
+          return json(422, { message: "A record with the same unique value already exists.", errors: { record: ["A record with the same unique value already exists."] } });
+        }
+        Object.assign(existing, call.body);
+        return json(200, { data: existing });
       }
       if (call.method === "DELETE" && id) {
         const index = records.findIndex((r) => r.id === id);

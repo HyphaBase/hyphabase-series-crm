@@ -58,8 +58,8 @@ test("episode 4: a role decides what a signed-in user can do", async () => {
   await giveRole(api, locationId, owner.user.id, ownerRole.id);
   await giveRole(api, locationId, staff.user.id, staffRole.id);
 
-  // Staff: the same token now reads, and still cannot delete.
-  assert.deepEqual((await crm.request("/me", { token: staff.token })).permissions, [CAN.readCustomers]);
+  // Staff: the same token now reads (and, from episode 6, edits), and still cannot delete.
+  assert.deepEqual((await crm.request("/me", { token: staff.token })).permissions, ROLES.staff.permissions);
   const { data: customers } = await crm.request("/customers", { token: staff.token });
   assert.ok(customers.some((c) => c.id === customer.id));
   await assert.rejects(crm.request(`/customers/${customer.id}`, { method: "DELETE", token: staff.token }), refusedWith(403), "staff cannot delete");

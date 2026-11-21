@@ -2,24 +2,38 @@
 
 import { useState, type FormEvent } from "react";
 import { api, ApiError } from "@/lib/api";
-import { STATUSES, type Customer, type CustomerErrors, type Status } from "@/lib/customers";
+import { STATUSES, type Customer, type CustomerChanges, type CustomerErrors, type Status } from "@/lib/customers";
 
-export function AddCustomer({ onAdded, onCancel, onSessionEnded }: { onAdded: (customer: Customer) => void; onCancel: () => void; onSessionEnded: () => void }) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [status, setStatus] = useState<Status>("lead");
+/** One form for both jobs: with a `customer` it edits that one, without it adds a new one. */
+export function CustomerForm({ customer, onSaved, onCancel, onSessionEnded }: { customer?: Customer; onSaved: (customer: Customer) => void; onCancel: () => void; onSessionEnded: () => void }) {
+  const [name, setName] = useState(customer?.name ?? "");
+  const [email, setEmail] = useState(customer?.email ?? "");
+  const [phone, setPhone] = useState(customer?.phone ?? "");
+  const [status, setStatus] = useState<Status>(customer?.status ?? "lead");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errors, setErrors] = useState<CustomerErrors>({});
 
+  /** Only what the person changed is sent, so an edit cannot undo someone else's change to another field. */
+  function changesTo(original: Customer): CustomerChanges {
+    const changes: CustomerChanges = {};
+    if (name.trim() !== original.name) changes.name = name;
+    if (email.trim().toLowerCase() !== original.email) changes.email = email;
+    if (phone.trim() !== (original.phone ?? "")) changes.phone = phone;
+    if (status !== original.status) changes.status = status;
+    return changes;
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
+    const changes = customer && changesTo(customer);
+    if (changes && Object.keys(changes).length === 0) return onCancel();
+
     setBusy(true);
     setError(null);
     setErrors({});
     try {
-      onAdded(await api.addCustomer({ name, email, phone, status }));
+      onSaved(customer ? await api.updateCustomer(customer.id, changes!) : await api.addCustomer({ name, email, phone, status }));
     } catch (problem) {
       if (problem instanceof ApiError && problem.status === 401) return onSessionEnded();
       if (problem instanceof ApiError) setErrors(problem.errors);
@@ -31,7 +45,7 @@ export function AddCustomer({ onAdded, onCancel, onSessionEnded }: { onAdded: (c
   return (
     // noValidate: the server's messages are the ones shown, so they are the same however the request is made.
     <form className="card add-form" onSubmit={submit} noValidate>
-      <h2>New customer</h2>
+      <h2>{customer ? `Edit ${customer.name}` : "New customer"}</h2>
       {error && <p className="error" role="alert">{error}</p>}
 
       <div className="grid">
@@ -61,7 +75,7 @@ export function AddCustomer({ onAdded, onCancel, onSessionEnded }: { onAdded: (c
 
       <div className="actions">
         <button type="button" className="button ghost" onClick={onCancel} disabled={busy}>Cancel</button>
-        <button className="button primary" disabled={busy}>{busy ? "Saving…" : "Save customer"}</button>
+        <button className="button primary" disabled={busy}>{busy ? "Saving…" : customer ? "Save changes" : "Save customer"}</button>
       </div>
     </form>
   );

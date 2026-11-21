@@ -242,7 +242,7 @@ It creates two test users and one customer, and removes them when it is done.
 - Three HyphaBase requests per customer request (who, what, then the data). Fine for a staff tool; a busier app would cache the first two for a short time.
 - If the same person has two tabs open at the moment their session is renewed, one tab can be asked to sign in again.
 - The list shows the newest 100 customers. There is no search or paging yet.
-- A person can add a customer but not edit or delete one from the screen. The delete route exists and is tested; the buttons come next.
+- A person can add a customer but not edit or delete one from the screen. The delete route exists and is tested; the buttons arrive in [episode 6](episode-06-update-delete.md).
 - `next start` marks the cookie `Secure`. Chrome and Firefox accept that on `http://localhost`; Safari may not, so use `npm run web` there.
 
-Next: episode 6, editing and deleting customers.
+Next: [episode 6](episode-06-update-delete.md), editing and deleting customers.

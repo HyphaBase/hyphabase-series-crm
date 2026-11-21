@@ -10,24 +10,41 @@
 export const CAN = {
   readCustomers: "data.records.read",
   addCustomers: "data.records.create",
+  updateCustomers: "data.records.update",
   deleteCustomers: "data.records.delete",
 };
 
 export const ROLES = {
-  owner: { name: "Owner", permissions: [CAN.readCustomers, CAN.addCustomers, CAN.deleteCustomers] },
-  staff: { name: "Staff", permissions: [CAN.readCustomers] },
+  owner: { name: "Owner", permissions: [CAN.readCustomers, CAN.addCustomers, CAN.updateCustomers, CAN.deleteCustomers] },
+  staff: { name: "Staff", permissions: [CAN.readCustomers, CAN.updateCustomers] },
 };
 
 const ROLES_PATH = "/api/modules/organizations/roles";
 
-/** Creates the role once; later runs find it by name and do nothing. Needs `roles.view` and `roles.create`. */
+/**
+ * Creates the role once; later runs find it by name. A role that is already
+ * there gains any permission it is missing (episode 6 gave both roles one
+ * more) and keeps whatever else it carries. Needs `roles.view`,
+ * `roles.create` and, to add to an existing role, `roles.update`.
+ */
 export async function ensureRole(api, locationId, { name, permissions }) {
   const { data: roles } = await api.request(`${ROLES_PATH}?per_page=100`, { locationId });
   const existing = roles.find((role) => role.name === name);
-  if (existing) return { created: false, role: existing };
 
-  const { data: role } = await api.request(ROLES_PATH, { method: "POST", locationId, body: { name, permissions } });
-  return { created: true, role };
+  if (!existing) {
+    const { data: role } = await api.request(ROLES_PATH, { method: "POST", locationId, body: { name, permissions } });
+    return { created: true, updated: false, role };
+  }
+
+  const missing = permissions.filter((permission) => !existing.permissions.includes(permission));
+  if (missing.length === 0) return { created: false, updated: false, role: existing };
+
+  const { data: role } = await api.request(`${ROLES_PATH}/${existing.id}`, {
+    method: "PATCH",
+    locationId,
+    body: { permissions: [...existing.permissions, ...missing] },
+  });
+  return { created: false, updated: true, role };
 }
 
 /** The user with exactly this email, or null. Needs the `users.view` scope. */
