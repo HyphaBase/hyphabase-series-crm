@@ -14,9 +14,9 @@ The example app from the **Build a CRM with HyphaBase** series. One small CRM, b
 | 4 | Roles: an Owner and a Staff role, and a server that checks what each person may do | [episode-04-permissions](episodes/episode-04-permissions.md) | [Role-based access control in SaaS](https://hyphabase.com/blog/role-based-access-control-saas) |
 | 5 | The SDK and a real frontend: sign in, see the customers and add one, in a browser | [episode-05-sdk-frontend](episodes/episode-05-sdk-frontend.md) | [Connect a Next.js frontend to a backend API](https://hyphabase.com/blog/connect-nextjs-frontend-to-backend-typescript) |
 | 6 | Editing and deleting customers: Staff can correct a customer, only the Owner can remove one | [episode-06-update-delete](episodes/episode-06-update-delete.md) | [Securely update and delete records in Next.js](https://hyphabase.com/blog/secure-update-delete-nextjs-typescript) |
-| 7 | Searching, filtering and paging through the customer list | planned | |
+| 7 | Searching, filtering and paging: find a customer by name and status, 25 at a time | [episode-07-search-paging](episodes/episode-07-search-paging.md) | coming soon |
 
-To see the code as it stood at the end of an episode, check out its tag: `episode-02-customers`, `episode-03-authentication`, `episode-04-permissions`, `episode-05-sdk-frontend` or `episode-06-update-delete`. Episode 1 is all console, so it has no tag.
+To see the code as it stood at the end of an episode, check out its tag: `episode-02-customers`, `episode-03-authentication`, `episode-04-permissions`, `episode-05-sdk-frontend`, `episode-06-update-delete` or `episode-07-search-paging`. Episode 1 is all console, so it has no tag.
 
 ## Run it
 
@@ -104,9 +104,18 @@ npm run web
 
 Sarah has **Edit** and **Delete** on every row. Marcus has **Edit** only, and a delete he sends by hand is refused with 403.
 
+From episode 7 the list can be searched by name, filtered by status and read 25 customers at a time. The key needs no new scope (see [the guide](episodes/episode-07-search-paging.md)):
+
+```bash
+npm run customer:seed     # adds 60 made-up customers; safe to run again
+npm run web
+```
+
+Type in the search box and the list narrows as you type. The address bar keeps the search, so a reload shows the same list.
+
 ## What this is, and isn't, so far
 
-After episode 6 the CRM has a data foundation (a real table with typed fields, a unique email and a default status), a sign-in, roles, and screens: a Next.js app whose pages hold no key and no token, and whose server refuses every request that does not come from a signed-in user whose role allows it. A person can see the customers, add one, correct one and, with the Owner role, delete one. There is no search or paging yet, and a deleted customer cannot be brought back from the screen.
+After episode 7 the CRM has a data foundation (a real table with typed fields, a unique email and a default status), a sign-in, roles, and screens: a Next.js app whose pages hold no key and no token, and whose server refuses every request that does not come from a signed-in user whose role allows it. A person can see the customers, find one by name or status, add one, correct one and, with the Owner role, delete one. The list comes 25 at a time, searched by HyphaBase and not in the browser. Search looks at names only, there is no total count, and a deleted customer cannot be brought back from the screen.
 
 ## Keep your secret key secret
 

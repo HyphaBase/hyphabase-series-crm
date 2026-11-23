@@ -189,7 +189,7 @@ It creates two test users and two customers, and removes them when it is done.
 - Two people editing the *same field* at the same moment: the last save wins, and nobody is told.
 - There is no undo for a delete on the screen, and no list of deleted customers.
 - The log line on the server is the only record of who changed what. It says who and which customer, not what the old value was.
-- The list still shows the newest 100 customers, with no search or paging.
+- The list still shows the newest 100 customers, with no search or paging. [Episode 7](episode-07-search-paging.md) adds both.
 - Three HyphaBase requests per customer request, as in episode 5.
 
-Next: episode 7, searching, filtering and paging through the customer list.
+Next: [episode 7](episode-07-search-paging.md), searching, filtering and paging through the customer list.

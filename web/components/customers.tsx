@@ -1,18 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import type { Customer } from "@/lib/customers";
+import { addPage, describeList, readListQuery, STATUSES, toSearch, type Customer, type ListFilter, type Status } from "@/lib/customers";
 import { CAN } from "@/lib/permissions";
 import { CustomerForm } from "./customer-form";
 
-type List = { step: "loading" } | { step: "ready"; customers: Customer[] } | { step: "failed"; message: string };
+/** `shows` is the filter the rows on screen answer, and `nextCursor` is where the page after them starts, if there is one. */
+type List = { step: "loading" } | { step: "ready"; customers: Customer[]; nextCursor: string | null; shows: ListFilter } | { step: "failed"; message: string };
+
+// How long to wait after the last keystroke before asking the server.
+const TYPING_PAUSE = 250;
 
 /** What the form above the table is doing, if it is open. */
 type Form = { job: "add" } | { job: "edit"; customer: Customer } | null;
 
 export function Customers({ permissions, onSessionEnded }: { permissions: string[]; onSessionEnded: () => void }) {
+  // The filter starts from the address, so a reload or a bookmark shows the same list.
+  const [filter, setFilter] = useState<ListFilter>(() => readListQuery(window.location.search));
+  const [typed, setTyped] = useState(filter.q);
   const [list, setList] = useState<List>({ step: "loading" });
+  const [loadingMore, setLoadingMore] = useState(false);
+  // Counts the lists asked for. An answer to anything but the latest one is thrown away.
+  const asked = useRef(0);
   const [form, setForm] = useState<Form>(null);
   const [justSaved, setJustSaved] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -24,19 +34,57 @@ export function Customers({ permissions, onSessionEnded }: { permissions: string
   const mayEdit = permissions.includes(CAN.updateCustomers);
   const mayDelete = permissions.includes(CAN.deleteCustomers);
 
+  // A new filter means a new list from the top: page one, and the cursor that goes with it.
   useEffect(() => {
-    api.customers().then(
-      (customers) => setList({ step: "ready", customers }),
+    const request = ++asked.current;
+    window.history.replaceState(null, "", window.location.pathname + toSearch(filter));
+    api.customers(filter).then(
+      (page) => {
+        if (request !== asked.current) return;
+        setList({ step: "ready", customers: page.data, nextCursor: page.next_cursor, shows: filter });
+        setLoadingMore(false);
+      },
       (error) => {
+        if (request !== asked.current) return;
         if (error instanceof ApiError && error.status === 401) return onSessionEnded();
         setList({ step: "failed", message: error instanceof Error ? error.message : "Something went wrong." });
       },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [filter]);
+
+  // Typing does not search on every letter. It searches when the typing stops.
+  useEffect(() => {
+    const q = typed.trim();
+    if (q === filter.q) return;
+    const timer = setTimeout(() => setFilter((current) => ({ ...current, q })), TYPING_PAUSE);
+    return () => clearTimeout(timer);
+  }, [typed, filter.q]);
+
+  function clear() {
+    setTyped("");
+    setFilter({ q: "", status: null });
+  }
+
+  async function loadMore() {
+    if (list.step !== "ready" || !list.nextCursor) return;
+    const request = asked.current;
+    setLoadingMore(true);
+    setProblem(null);
+    try {
+      const page = await api.customers(list.shows, list.nextCursor);
+      if (request !== asked.current) return;
+      setList((current) => (current.step === "ready" ? { ...current, customers: addPage(current.customers, page.data), nextCursor: page.next_cursor } : current));
+    } catch (error) {
+      if (request !== asked.current) return;
+      if (error instanceof ApiError && error.status === 401) return onSessionEnded();
+      setProblem(error instanceof Error ? error.message : "Something went wrong.");
+    }
+    setLoadingMore(false);
+  }
 
   const change = (customers: (current: Customer[]) => Customer[]) =>
-    setList((current) => (current.step === "ready" ? { step: "ready", customers: customers(current.customers) } : current));
+    setList((current) => (current.step === "ready" ? { ...current, customers: customers(current.customers) } : current));
 
   function saved(customer: Customer) {
     change((customers) => (customers.some((c) => c.id === customer.id) ? customers.map((c) => (c.id === customer.id ? customer : c)) : [customer, ...customers]));
@@ -65,13 +113,17 @@ export function Customers({ permissions, onSessionEnded }: { permissions: string
     setDeleting(false);
   }
 
+  const filtered = Boolean(filter.q || filter.status);
+  // The rows on screen still answer the previous filter until the new answer arrives.
+  const searching = list.step === "ready" && list.shows !== filter;
+
   return (
     <section>
       <div className="page-head">
         <div>
           <h1>Customers</h1>
           <p className="muted">
-            {list.step === "ready" ? `${list.customers.length} ${list.customers.length === 1 ? "customer" : "customers"} in Portland` : "Portland"}
+            {list.step === "ready" ? describeList(list.customers.length, Boolean(list.nextCursor), list.shows) : "Portland"}
           </p>
         </div>
         {mayAdd && !form && <button className="button primary" onClick={() => open({ job: "add" })}>Add customer</button>}
@@ -88,12 +140,32 @@ export function Customers({ permissions, onSessionEnded }: { permissions: string
         />
       )}
 
+      <div className="toolbar" role="search">
+        <input
+          type="search"
+          name="q"
+          className="search"
+          aria-label="Search customers by name"
+          placeholder="Search by name"
+          autoComplete="off"
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+        />
+        <select name="status" aria-label="Status" value={filter.status ?? ""} onChange={(e) => setFilter({ q: typed.trim(), status: (e.target.value || null) as Status | null })}>
+          <option value="">Any status</option>
+          {STATUSES.map((value) => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}
+        </select>
+        {(filtered || typed) && <button className="button ghost" onClick={clear}>Clear</button>}
+      </div>
+
       {problem && <p className="error list-error" role="alert">{problem}</p>}
 
-      <div className="card table-card">
+      <div className={searching ? "card table-card searching" : "card table-card"} aria-busy={searching}>
         {list.step === "loading" && <p className="empty muted">Loading customers…</p>}
         {list.step === "failed" && <p className="empty error" role="alert">{list.message}</p>}
-        {list.step === "ready" && list.customers.length === 0 && <p className="empty muted">No customers yet.</p>}
+        {list.step === "ready" && list.customers.length === 0 && (
+          <p className="empty muted">{list.shows.q || list.shows.status ? "No customers match. Search looks at names only." : "No customers yet."}</p>
+        )}
         {list.step === "ready" && list.customers.length > 0 && (
           <table>
             <thead>
@@ -129,6 +201,11 @@ export function Customers({ permissions, onSessionEnded }: { permissions: string
               ))}
             </tbody>
           </table>
+        )}
+        {list.step === "ready" && list.nextCursor && (
+          <div className="more">
+            <button className="button" onClick={loadMore} disabled={loadingMore || searching}>{loadingMore ? "Loading…" : "Load more"}</button>
+          </div>
         )}
       </div>
 

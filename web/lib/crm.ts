@@ -6,7 +6,7 @@
  *
  *   signIn          email + password  ->  a session, kept by the caller
  *   me              who am I, and what may I do
- *   listCustomers   needs data.records.read
+ *   listCustomers   needs data.records.read; one page, searched and filtered by HyphaBase
  *   addCustomer     needs data.records.create
  *   updateCustomer  needs data.records.update
  *   deleteCustomer  needs data.records.delete
@@ -18,7 +18,7 @@
  */
 
 import { createClient, HyphaBaseError, memoryStorage, type SessionStorageAdapter } from "hyphabase";
-import { parseCustomer, parseCustomerChanges, toCustomer, type Customer, type CustomerFields } from "./customers";
+import { PAGE_SIZE, parseCustomer, parseCustomerChanges, parseListQuery, toCustomer, type Customer, type CustomerFields } from "./customers";
 import { CAN, type Permission } from "./permissions";
 
 export { CAN };
@@ -56,6 +56,9 @@ class Refusal extends Error {
 const refuse = (status: number, body: Record<string, unknown>) => new Refusal({ status, body });
 
 const noSuchCustomer = () => refuse(404, { error: "No such customer." });
+
+/** A cursor HyphaBase did not hand out. */
+const noSuchPage = () => refuse(422, { error: "That page is not available any more. Start the list again." });
 
 /** HyphaBase refusing a record because its email is taken: the collection's only unique field. */
 function emailTaken(error: unknown): Refusal | null {
@@ -158,12 +161,23 @@ export function createCrm(config: CrmConfig) {
     me: (session: SessionStorageAdapter) =>
       answer("who am I", async () => ({ status: 200, body: await identify(session) })),
 
-    listCustomers: (session: SessionStorageAdapter) =>
+    listCustomers: (session: SessionStorageAdapter, input?: unknown) =>
       answer("list customers", async () => {
         await requirePermission(session, CAN.readCustomers);
 
-        const page = await customers.list({ sort: "-created_at", limit: 100 });
-        return { status: 200, body: { data: page.data.map(toCustomer) } };
+        const parsed = parseListQuery(input);
+        if (!parsed.ok) throw noSuchPage();
+        const { q, status, cursor } = parsed.query;
+
+        // The field names, the operators, the order and the page size are written here. The browser supplies two values and a cursor.
+        const filter = { ...(q ? { name: { contains: q } } : {}), ...(status ? { status } : {}) };
+        try {
+          const page = await customers.list({ filter, sort: "-created_at", limit: PAGE_SIZE, cursor });
+          return { status: 200, body: { data: page.data.map(toCustomer), next_cursor: page.meta.next_cursor } };
+        } catch (error) {
+          if (error instanceof HyphaBaseError && error.status === 422 && error.body?.errors?.cursor) throw noSuchPage();
+          throw error;
+        }
       }),
 
     addCustomer: (session: SessionStorageAdapter, input: unknown) =>
