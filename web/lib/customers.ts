@@ -93,3 +93,69 @@ export function parseCustomerChanges(input: unknown): { ok: true; changes: Custo
 
   return Object.keys(errors).length > 0 ? { ok: false, errors } : { ok: true, changes };
 }
+
+/** How many customers one request returns. The browser does not get to choose. */
+export const PAGE_SIZE = 25;
+
+/** What the list can be asked: part of a name, one status, or both. */
+export type ListFilter = { q: string; status: Status | null };
+
+/** A filter, and where to carry on from: the `next_cursor` of the page before. */
+export type ListQuery = ListFilter & { cursor: string | null };
+
+// HyphaBase's cursors are base64. Anything else was not handed out by it.
+const CURSOR = /^[A-Za-z0-9+/=]{1,300}$/;
+
+/**
+ * Reads a question about the list out of whatever the browser sent. Only
+ * three things are ever read: `q`, `status` and `cursor`. A search or a
+ * status that makes no sense is left out, which shows the whole list. A
+ * cursor that makes no sense is an error, because showing page one in
+ * answer to "the next page" would repeat customers on the screen.
+ */
+export function parseListQuery(input: unknown): { ok: true; query: ListQuery } | { ok: false } {
+  const raw = fieldsOf(input);
+
+  const q = text(raw.q).slice(0, 100);
+  const status = STATUSES.includes(raw.status as Status) ? (raw.status as Status) : null;
+
+  if (raw.cursor === undefined || raw.cursor === null || raw.cursor === "") return { ok: true, query: { q, status, cursor: null } };
+  if (typeof raw.cursor !== "string" || !CURSOR.test(raw.cursor)) return { ok: false };
+  return { ok: true, query: { q, status, cursor: raw.cursor } };
+}
+
+/** A filter as a query string, for this app's own address bar and its own API: "?q=dana&status=active", or "" for everything. */
+export function toSearch({ q, status, cursor }: ListFilter & { cursor?: string | null }): string {
+  const params = new URLSearchParams();
+  if (q.trim()) params.set("q", q.trim());
+  if (status) params.set("status", status);
+  if (cursor) params.set("cursor", cursor);
+  const search = params.toString();
+  return search ? `?${search}` : "";
+}
+
+/** The filter in an address, so a reload or a bookmark shows the same list. */
+export function readListQuery(search: string): ListFilter {
+  const params = new URLSearchParams(search);
+  const parsed = parseListQuery({ q: params.get("q"), status: params.get("status") });
+  return parsed.ok ? { q: parsed.query.q, status: parsed.query.status } : { q: "", status: null };
+}
+
+/** The list with another page on the end. A customer added or edited meanwhile may already be on screen, and is not shown twice. */
+export function addPage(shown: Customer[], page: Customer[]): Customer[] {
+  const seen = new Set(shown.map((customer) => customer.id));
+  return [...shown, ...page.filter((customer) => !seen.has(customer.id))];
+}
+
+/**
+ * The line under the heading. HyphaBase returns a page and whether there
+ * is another one, never a total, so a number is only called the number of
+ * customers once the last page is on screen.
+ */
+export function describeList(shown: number, more: boolean, filter: ListFilter): string {
+  const filtered = Boolean(filter.q || filter.status);
+  if (more) return `Showing ${shown} ${filtered ? "matches" : "customers"}, newest first`;
+  if (!filtered) return `${shown} ${shown === 1 ? "customer" : "customers"} in Portland`;
+  if (shown === 0) return "No customers match";
+  return shown === 1 ? "1 customer matches" : `${shown} customers match`;
+}

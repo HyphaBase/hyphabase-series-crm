@@ -93,9 +93,16 @@ em.muted { font-style: normal; font-weight: 400; font-size: 12px; margin-left: 4
 .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
 .actions .button.ghost { height: 40px; }
 
+/* Search and filter, above the table */
+.toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.toolbar input, .toolbar select { font: inherit; height: 40px; padding: 0 12px; border: 1px solid var(--gray-200); border-radius: 10px; background: #fff; color: var(--gray-900); }
+.toolbar .search { flex: 1; min-width: 0; max-width: 360px; }
+.toolbar .button.ghost { height: 40px; }
+
 /* Table */
 /* A table wider than the screen scrolls sideways inside its card; the page itself never does. */
-.table-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+/* position: the hidden "Actions" heading is placed absolutely, and has to stay inside the part that scrolls. */
+.table-card { position: relative; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .empty { padding: 40px 24px; text-align: center; background: none; }
 table { width: 100%; border-collapse: collapse; }
 th, td { white-space: nowrap; }
@@ -103,6 +110,8 @@ th { text-align: left; font-size: 12px; font-weight: 600; letter-spacing: 0.04em
 td { padding: 16px 20px; border-bottom: 1px solid var(--gray-100); color: var(--gray-700); }
 td.strong { color: var(--gray-900); }
 tr:last-child td { border-bottom: 0; }
+.searching table { opacity: 0.55; transition: opacity 0.15s; }
+.more { display: flex; justify-content: center; padding: 16px; border-top: 1px solid var(--gray-100); }
 tr.fresh td { animation: fresh 2.4s ease-out; }
 @keyframes fresh { from { background: var(--brand-50); } to { background: transparent; } }
 
@@ -130,6 +139,12 @@ td.row-actions { text-align: right; padding-top: 10px; padding-bottom: 10px; }
   .button { height: 44px; }
   .button.ghost { height: 40px; }
   .button.small { height: 36px; }
+  .toolbar { flex-wrap: wrap; }
+  .toolbar .search { flex-basis: 100%; max-width: none; }
+  .toolbar input, .toolbar select { font-size: 16px; height: 44px; }
+  .toolbar select { flex: 1; }
+  .toolbar .button.ghost { height: 44px; }
+  .more .button { width: 100%; }
   .actions .button { flex: 1; height: 44px; }
   .page-head > div { min-width: 0; }
 }

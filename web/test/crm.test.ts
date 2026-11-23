@@ -1,7 +1,7 @@
 import { memoryStorage, type Session } from "hyphabase";
 import { describe, expect, it } from "vitest";
 import { createCrm } from "../lib/crm";
-import { fakeHyphaBase, people, PORTLAND, PUBLISHABLE_KEY, SALEM, SECRET_KEY, type FakeUser } from "./fake-hyphabase";
+import { fakeHyphaBase, people, PORTLAND, PUBLISHABLE_KEY, SALEM, SECRET_KEY, type Call, type FakeUser } from "./fake-hyphabase";
 
 const DANA = "c0000000-0000-4000-8000-000000000001";
 const LIAM = { name: "Liam Ortiz", email: "liam.ortiz@example.com", phone: "555-0117", status: "active" };
@@ -30,7 +30,7 @@ async function signedIn(who: "sarah" | "marcus", users?: FakeUser[]) {
 }
 
 /** Every request that was sent to the customers data API. */
-const dataCalls = (calls: { path: string }[]) => calls.filter((call) => call.path.includes("/modules/data/"));
+const dataCalls = (calls: Call[]) => calls.filter((call) => call.path.includes("/modules/data/"));
 
 describe("signing in", () => {
   it("keeps the session on the server side and tells the browser only who signed in", async () => {
@@ -187,12 +187,166 @@ describe("the customer list", () => {
     const reply = await crm.listCustomers(session);
 
     expect(reply.status).toBe(200);
-    expect(reply.body).toEqual({ data: [{ id: DANA, name: "Dana Whitfield", email: "dana@example.com", phone: "555-0142", status: "lead" }] });
+    expect(reply.body).toEqual({ data: [{ id: DANA, name: "Dana Whitfield", email: "dana@example.com", phone: "555-0142", status: "lead" }], next_cursor: null });
     expect(hyphabase.calls.map((call) => [call.path, call.bearer])).toEqual([
       ["/api/auth/me", "token-1"],
       ["/api/permissions/me", "token-1"],
       ["/api/modules/data/customers/records", SECRET_KEY],
     ]);
+  });
+});
+
+describe("finding customers", () => {
+  /** Sixty more customers, newest first, every third one active. Dana, the oldest, stays last. */
+  function crowd(records: any[]) {
+    for (let n = 1; n <= 60; n++) {
+      const number = String(n).padStart(2, "0");
+      records.unshift({
+        id: `c0000000-0000-4000-8000-0000000001${number}`,
+        name: n % 10 === 0 ? `Daniel Reyes ${number}` : `Customer ${number}`,
+        email: `customer-${number}@example.com`,
+        phone: null,
+        status: n % 3 === 0 ? "active" : "lead",
+      });
+    }
+  }
+
+  const names = (reply: { body?: unknown }) => (reply.body as { data: { name: string }[] }).data.map((customer) => customer.name);
+  const ids = (reply: { body?: unknown }) => (reply.body as { data: { id: string }[] }).data.map((customer) => customer.id);
+  const cursorOf = (reply: { body?: unknown }) => (reply.body as { next_cursor: string | null }).next_cursor;
+
+  it("is refused with no session, whatever is asked for, before any data is read", async () => {
+    const { crm, hyphabase } = setup();
+
+    expect((await crm.listCustomers(memoryStorage(), { q: "dana", status: "lead" })).status).toBe(401);
+    expect(hyphabase.calls).toHaveLength(0);
+  });
+
+  it("is refused for someone with no role before the question is even looked at", async () => {
+    const noRole = { ...people.marcus(), permissions: [] };
+    const { crm, session, hyphabase } = await signedIn("marcus", [noRole]);
+
+    expect((await crm.listCustomers(session, { cursor: "not a cursor" })).status).toBe(403);
+    expect(dataCalls(hyphabase.calls)).toEqual([]);
+  });
+
+  it("returns one page of 25, newest first, and a cursor for the next", async () => {
+    const { crm, session, hyphabase } = await signedIn("marcus");
+    crowd(hyphabase.records);
+
+    const reply = await crm.listCustomers(session);
+
+    expect(names(reply)).toHaveLength(25);
+    expect(names(reply)[0]).toBe("Daniel Reyes 60");
+    expect(cursorOf(reply)).toEqual(expect.any(String));
+    expect(dataCalls(hyphabase.calls)[0].query).toEqual({ sort: "-created_at", limit: "25" });
+  });
+
+  it("carries on from the cursor without repeating or skipping anyone, and stops at the end", async () => {
+    const { crm, session, hyphabase } = await signedIn("marcus");
+    crowd(hyphabase.records);
+
+    const first = await crm.listCustomers(session);
+    const second = await crm.listCustomers(session, { cursor: cursorOf(first) });
+    const third = await crm.listCustomers(session, { cursor: cursorOf(second) });
+
+    expect(ids(second)).toHaveLength(25);
+    expect(ids(third)).toHaveLength(11);
+    expect(new Set([...ids(first), ...ids(second), ...ids(third)]).size).toBe(61);
+    expect(names(third).at(-1)).toBe("Dana Whitfield");
+    expect(cursorOf(third)).toBeNull();
+  });
+
+  it("finds customers by part of a name, whatever the capitals", async () => {
+    const { crm, session, hyphabase } = await signedIn("marcus");
+    crowd(hyphabase.records);
+
+    const reply = await crm.listCustomers(session, { q: "  dAN " });
+
+    expect(names(reply)).toEqual(["Daniel Reyes 60", "Daniel Reyes 50", "Daniel Reyes 40", "Daniel Reyes 30", "Daniel Reyes 20", "Daniel Reyes 10", "Dana Whitfield"]);
+    expect(cursorOf(reply)).toBeNull();
+    expect(dataCalls(hyphabase.calls)[0].query).toEqual({ "filter[name][contains]": "dAN", sort: "-created_at", limit: "25" });
+  });
+
+  it("narrows by status, alone or together with a name", async () => {
+    const { crm, session, hyphabase } = await signedIn("marcus");
+    crowd(hyphabase.records);
+
+    const active = await crm.listCustomers(session, { status: "active" });
+    const activeDaniels = await crm.listCustomers(session, { q: "daniel", status: "active" });
+
+    expect(names(active)).toHaveLength(20);
+    expect(names(activeDaniels)).toEqual(["Daniel Reyes 60", "Daniel Reyes 30"]);
+    expect(dataCalls(hyphabase.calls)[1].query).toEqual({ "filter[name][contains]": "daniel", "filter[status]": "active", sort: "-created_at", limit: "25" });
+  });
+
+  it("keeps the search and the status on the next page", async () => {
+    const { crm, session, hyphabase } = await signedIn("marcus");
+    crowd(hyphabase.records);
+
+    const first = await crm.listCustomers(session, { q: "customer", status: "lead" });
+    const second = await crm.listCustomers(session, { q: "customer", status: "lead", cursor: cursorOf(first) });
+
+    expect(names(first)).toHaveLength(25);
+    expect(names(second)).toHaveLength(11);
+    expect(dataCalls(hyphabase.calls)[1].query).toMatchObject({ "filter[name][contains]": "customer", "filter[status]": "lead", cursor: cursorOf(first) });
+  });
+
+  it("says nobody matches with an empty page, not an error", async () => {
+    const { crm, session } = await signedIn("marcus");
+
+    expect(await crm.listCustomers(session, { q: "zzz" })).toEqual({ status: 200, body: { data: [], next_cursor: null } });
+  });
+
+  it.each([{ status: "archived" }, { status: "" }, { q: "" }, { q: "   " }, { status: ["active"] }, { q: 7 }])("ignores a filter it does not offer (%j)", async (query) => {
+    const { crm, session, hyphabase } = await signedIn("marcus");
+
+    expect((await crm.listCustomers(session, query)).status).toBe(200);
+    expect(dataCalls(hyphabase.calls)[0].query).toEqual({ sort: "-created_at", limit: "25" });
+  });
+
+  it("passes on nothing but the search, the status and the cursor: no field, operator, sort or page size from the browser", async () => {
+    const { crm, session, hyphabase } = await signedIn("marcus");
+
+    const reply = await crm.listCustomers(session, { q: "dana", limit: "100", sort: "email", include_deleted: "true", select: "email", filter: { email: { contains: "@" } }, "filter[email][contains]": "@" });
+
+    expect(reply.status).toBe(200);
+    expect(dataCalls(hyphabase.calls)[0].query).toEqual({ "filter[name][contains]": "dana", sort: "-created_at", limit: "25" });
+  });
+
+  it("treats what was typed as text to look for, never as part of the query", async () => {
+    const { crm, session, hyphabase } = await signedIn("marcus");
+    const typed = "%_&filter[status]=active&limit=100";
+
+    const reply = await crm.listCustomers(session, { q: typed });
+
+    expect(reply).toEqual({ status: 200, body: { data: [], next_cursor: null } });
+    expect(dataCalls(hyphabase.calls)[0].query).toEqual({ "filter[name][contains]": typed, sort: "-created_at", limit: "25" });
+  });
+
+  it("looks for the first 100 characters of a very long search", async () => {
+    const { crm, session, hyphabase } = await signedIn("marcus");
+
+    await crm.listCustomers(session, { q: "a".repeat(500) });
+
+    expect(dataCalls(hyphabase.calls)[0].query["filter[name][contains]"]).toBe("a".repeat(100));
+  });
+
+  it.each(["not a cursor!", "<script>", "a".repeat(600), 12, ["abc"]])("refuses a cursor that cannot be one, without asking HyphaBase (%j)", async (cursor) => {
+    const { crm, session, hyphabase } = await signedIn("marcus");
+
+    expect(await crm.listCustomers(session, { cursor })).toEqual({ status: 422, body: { error: "That page is not available any more. Start the list again." } });
+    expect(dataCalls(hyphabase.calls)).toEqual([]);
+  });
+
+  it("says the same when HyphaBase does not recognise the cursor", async () => {
+    const { crm, session, log } = await signedIn("marcus");
+
+    expect(await crm.listCustomers(session, { cursor: btoa(JSON.stringify({ id: "nobody" })) })).toEqual({
+      status: 422,
+      body: { error: "That page is not available any more. Start the list again." },
+    });
+    expect(log.at(-1)).toBe("list customers 422");
   });
 });
 

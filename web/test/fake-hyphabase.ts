@@ -23,6 +23,8 @@ export interface Call {
   path: string;
   bearer: string;
   location: string | null;
+  /** The query string, as the API would read it: { "filter[name][contains]": "dana", limit: "25" }. */
+  query: Record<string, string>;
   body: any;
 }
 
@@ -66,6 +68,40 @@ export function fakeHyphaBase(users: FakeUser[] = [people.sarah(), people.marcus
     return { token, refresh_token, expires_at: new Date(Date.now() + 3_600_000).toISOString() };
   };
 
+  /**
+   * The list grammar, as far as the CRM uses it: contains on name, an exact
+   * status, a limit and a cursor. Like the real API it refuses a field or
+   * a cursor it does not know with 422, and it never says how many
+   * records there are in total.
+   */
+  const list = (query: Record<string, string>) => {
+    let matching = records;
+    let limit = 25;
+    let after: string | null = null;
+
+    for (const [key, value] of Object.entries(query)) {
+      if (key === "sort") continue;
+      if (key === "limit") limit = Number(value);
+      else if (key === "cursor") {
+        try {
+          after = JSON.parse(atob(value)).id;
+        } catch {
+          after = "";
+        }
+        if (typeof after !== "string" || !records.some((r) => r.id === after)) {
+          return json(422, { message: "The cursor does not match this query; start again without one.", errors: { cursor: ["The cursor does not match this query; start again without one."] } });
+        }
+      } else if (key === "filter[name][contains]") matching = matching.filter((r) => r.name.toLowerCase().includes(value.toLowerCase()));
+      else if (key === "filter[status]" || key === "filter[status][eq]") matching = matching.filter((r) => r.status === value);
+      else return json(422, { message: "Unknown field.", errors: { [key]: ["Unknown field."] } });
+    }
+
+    const start = after ? matching.findIndex((r) => r.id === after) + 1 : 0;
+    const page = matching.slice(start, start + limit);
+    const more = start + limit < matching.length;
+    return json(200, { data: page, meta: { next_cursor: more ? btoa(JSON.stringify({ created_at: "2026-11-23 10:00:00", id: page.at(-1).id })) : null } });
+  };
+
   const fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = new URL(String(input));
     const headers = new Headers(init.headers);
@@ -74,6 +110,7 @@ export function fakeHyphaBase(users: FakeUser[] = [people.sarah(), people.marcus
       path: url.pathname,
       bearer: headers.get("Authorization")?.replace(/^Bearer /, "") ?? "",
       location: headers.get("X-Location-Id"),
+      query: Object.fromEntries(url.searchParams),
       body: init.body ? JSON.parse(String(init.body)) : undefined,
     };
     calls.push(call);
@@ -113,7 +150,7 @@ export function fakeHyphaBase(users: FakeUser[] = [people.sarah(), people.marcus
     if (record) {
       if (call.bearer !== SECRET_KEY) return json(403, { message: "Custom data is server-side only in this release: authenticate with a secret (sk_) API key." });
       const id = record[1];
-      if (call.method === "GET" && !id) return json(200, { data: records, meta: { next_cursor: null } });
+      if (call.method === "GET" && !id) return list(call.query);
       if (call.method === "POST" && !id) {
         if (records.some((r) => r.email === call.body.email)) {
           return json(422, { message: "A record with the same unique value already exists.", errors: { record: ["A record with the same unique value already exists."] } });
