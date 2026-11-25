@@ -1,22 +1,25 @@
 /**
- * End-to-end check of episodes 5 to 7 against a real HyphaBase environment, using .env:
+ * End-to-end check of episodes 5 to 8 against a real HyphaBase environment, using .env:
  *
  *   npm run smoke:web
  *
  * Builds the web app, starts it on a free port and talks to it the way a
  * browser does, keeping the session cookie by hand. It proves the claims
- * the episode makes: no cookie and a made-up cookie get nothing; staff can
+ * the episodes make: no cookie and a made-up cookie get nothing; staff can
  * read but not add; the owner can add; bad input and a duplicate email are
  * refused with a message per field; staff can edit a customer but not
  * delete one, and the customer survives the attempt; the owner can delete;
- * the list comes a page of 25 at a time and the next page carries on where
- * the last one stopped; a search finds part of a name whatever the
- * capitals, and combines with a status; the browser cannot choose the
- * page size or reach any other filter; signing out ends the session at
+ * the list comes a page of 25 at a time with a total, and the next page
+ * carries on where the last one stopped; a search finds part of a name, an
+ * email or a phone number, and combines with a status; the browser cannot
+ * choose the page size or reach any other filter; staff can add a note and
+ * HyphaBase records who wrote it; signing out ends the session at
  * HyphaBase; and the secret key is in nothing the browser can download.
  *
- * Creates two throwaway users and 29 customers, and removes them afterwards
- * (the users only if the key has users.delete, see test/smoke-auth.js).
+ * Since episode 8 the customers live in the Clients module, so run
+ * `npm run clients:setup` first. Creates two throwaway users and 29
+ * customers, and removes them afterwards (the users only if the key has
+ * users.delete, see test/smoke-auth.js).
  */
 
 import assert from "node:assert/strict";
@@ -27,10 +30,9 @@ import path from "node:path";
 import { after, test } from "node:test";
 
 import { addUser } from "../src/auth.js";
-import { deleteCustomer, ensureCustomersCollection } from "../src/customers.js";
+import { ensureClientStatuses } from "../src/clients.js";
 import { ApiError, createApi, loadConfig, requireLocation } from "../src/hyphabase.js";
 import { ensureRole, giveRole, ROLES } from "../src/roles.js";
-import { seedCustomers } from "../src/seed.js";
 
 const config = loadConfig();
 const api = createApi(config);
@@ -90,8 +92,8 @@ async function filesUnder(dir) {
   return entries.filter((entry) => entry.isFile()).map((entry) => path.join(entry.parentPath, entry.name));
 }
 
-test("episodes 5 to 7: the web app", async () => {
-  await ensureCustomersCollection(api);
+test("episodes 5 to 8: the web app", async () => {
+  await ensureClientStatuses(api, locationId);
   await untilReady();
 
   const run = Date.now().toString(36);
@@ -108,6 +110,7 @@ test("episodes 5 to 7: the web app", async () => {
   const staff = await person("staff", staffRole);
   const customerEmail = `smoke-web-${run}@example.com`;
   const otherEmail = `smoke-web-other-${run}@example.com`;
+  const smokeWeb = { first_name: "Smoke", last_name: "Web", email: customerEmail, phone: "555-0199" };
 
   try {
     // Nobody: no cookie, then a cookie somebody made up.
@@ -116,7 +119,7 @@ test("episodes 5 to 7: the web app", async () => {
     assert.equal((await stranger.request("GET", "/api/customers")).status, 401);
     stranger.cookie = `crm_session=${Buffer.from(JSON.stringify({ accessToken: "made-up", refreshToken: "made-up", expiresAt: "2099-01-01T00:00:00Z", user: { id: owner.user.id, name: "Smoke owner", email: owner.email }, locationIds: [locationId] })).toString("base64url")}`;
     assert.equal((await stranger.request("GET", "/api/customers")).status, 401, "a made-up cookie gets nothing");
-    assert.equal((await stranger.request("POST", "/api/customers", { name: "Nobody", email: `nobody-${run}@example.com` })).status, 401);
+    assert.equal((await stranger.request("POST", "/api/customers", { ...smokeWeb, email: `nobody-${run}@example.com` })).status, 401);
 
     // A wrong password.
     assert.equal((await browser().request("POST", "/api/login", { email: staff.email, password: "not-the-password" })).status, 401);
@@ -128,22 +131,23 @@ test("episodes 5 to 7: the web app", async () => {
     assert.deepEqual(Object.keys(signedIn.body), ["user"], "the reply carries no token");
     assert.match(marcus.lastSetCookie, /HttpOnly/i);
     assert.match(marcus.lastSetCookie, /SameSite=strict/i);
-    assert.deepEqual((await marcus.request("GET", "/api/me")).body.permissions, ROLES.staff.permissions);
+    assert.deepEqual([...(await marcus.request("GET", "/api/me")).body.permissions].sort(), [...ROLES.staff.permissions].sort());
     assert.equal((await marcus.request("GET", "/api/customers")).status, 200);
-    const refused = await marcus.request("POST", "/api/customers", { name: "Smoke Web", email: customerEmail });
+    const refused = await marcus.request("POST", "/api/customers", smokeWeb);
     assert.equal(refused.status, 403, "staff cannot add");
-    assert.equal(refused.body.required_permission, "data.records.create");
+    assert.equal(refused.body.required_permission, "clients.create");
 
     // Owner: bad input, then a real customer, then the same email again.
     const sarah = browser();
     assert.equal((await sarah.request("POST", "/api/login", { email: owner.email, password })).status, 200);
-    const invalid = await sarah.request("POST", "/api/customers", { name: "", email: "not-an-email" });
+    const invalid = await sarah.request("POST", "/api/customers", { first_name: "", email: "not-an-email" });
     assert.equal(invalid.status, 422);
-    assert.deepEqual(Object.keys(invalid.body.errors).sort(), ["email", "name"]);
-    const added = await sarah.request("POST", "/api/customers", { name: "Smoke Web", email: customerEmail, phone: "555-0199" });
+    assert.deepEqual(Object.keys(invalid.body.errors).sort(), ["email", "first_name", "last_name", "phone"]);
+    const added = await sarah.request("POST", "/api/customers", smokeWeb);
     assert.equal(added.status, 201);
-    assert.equal(added.body.data.status, "lead", "the collection's default status");
-    assert.equal((await sarah.request("POST", "/api/customers", { name: "Smoke Web", email: customerEmail })).status, 409, "the same email twice");
+    assert.equal(added.body.data.name, "Smoke Web");
+    assert.equal(added.body.data.status, "lead", "a customer added without a status starts as a lead");
+    assert.equal((await sarah.request("POST", "/api/customers", smokeWeb)).status, 409, "the same email twice");
     const seen = await marcus.request("GET", "/api/customers");
     assert.ok(seen.body.data.some((c) => c.id === added.body.data.id), "staff sees the new customer");
 
@@ -156,18 +160,39 @@ test("episodes 5 to 7: the web app", async () => {
     assert.equal(badEdit.status, 422);
     assert.deepEqual(Object.keys(badEdit.body.errors), ["email"]);
     assert.equal((await marcus.request("PATCH", customerPath, {})).status, 422, "an edit has to change something");
+    assert.equal((await marcus.request("PATCH", customerPath, { phone: "" })).status, 422, "the Clients module wants a phone number");
 
     // Staff cannot delete, and the customer survives the attempt.
     const noDelete = await marcus.request("DELETE", customerPath);
     assert.equal(noDelete.status, 403, "staff cannot delete");
-    assert.equal(noDelete.body.required_permission, "data.records.delete");
+    assert.equal(noDelete.body.required_permission, "clients.delete");
     assert.ok((await marcus.request("GET", "/api/customers")).body.data.some((c) => c.id === added.body.data.id), "the customer is still there");
 
+    // Episode 8. Staff writes a note. HyphaBase says who wrote it and when; the browser does not get a say.
+    const notesPath = `${customerPath}/notes`;
+    assert.deepEqual((await marcus.request("GET", notesPath)).body, { data: [] });
+    const noted = await marcus.request("POST", notesPath, { content: "  Prefers mornings. Gate code is on file.  ", author: "Somebody Else", user_id: owner.user.id });
+    assert.equal(noted.status, 201, "staff can add a note");
+    assert.equal(noted.body.data.content, "Prefers mornings. Gate code is on file.");
+    assert.equal(noted.body.data.author, "Smoke staff", "the author is the person who was signed in");
+    assert.ok(Math.abs(Date.now() - Date.parse(noted.body.data.created_at)) < 5 * 60_000, "and the time is now");
+    // HyphaBase times a note to the second, so two notes in the same second have no order between them.
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    assert.equal((await sarah.request("POST", notesPath, { content: "Quoted for a deep clean." })).status, 201);
+    const notes = await sarah.request("GET", notesPath);
+    assert.deepEqual(notes.body.data.map((n) => [n.author, n.content]), [["Smoke owner", "Quoted for a deep clean."], ["Smoke staff", "Prefers mornings. Gate code is on file."]], "newest first");
+    const empty = await marcus.request("POST", notesPath, { content: "   " });
+    assert.equal(empty.status, 422);
+    assert.equal(empty.body.error, "Write the note first.");
+    assert.equal((await stranger.request("GET", notesPath)).status, 401);
+    assert.equal((await stranger.request("POST", notesPath, { content: "Hello" })).status, 401);
+    assert.equal((await marcus.request("GET", `/api/customers/${crypto.randomUUID()}/notes`)).status, 404, "notes on nobody");
+
     // Owner: edits, cannot take another customer's email, deletes.
-    const cleared = await sarah.request("PATCH", customerPath, { status: "active", phone: "" });
-    assert.equal(cleared.status, 200);
-    assert.deepEqual(cleared.body.data, { ...added.body.data, status: "active", phone: null });
-    assert.equal((await sarah.request("POST", "/api/customers", { name: "Smoke Other", email: otherEmail })).status, 201);
+    const changed = await sarah.request("PATCH", customerPath, { status: "active", last_name: "Webb" });
+    assert.equal(changed.status, 200);
+    assert.deepEqual(changed.body.data, { ...fixed.body.data, status: "active", last_name: "Webb", name: "Smoke Webb" });
+    assert.equal((await sarah.request("POST", "/api/customers", { ...smokeWeb, last_name: "Other", email: otherEmail })).status, 201);
     assert.equal((await sarah.request("PATCH", customerPath, { email: otherEmail })).status, 409, "an email another customer has");
     assert.equal((await sarah.request("DELETE", customerPath)).status, 204, "the owner can delete");
     assert.ok(!(await marcus.request("GET", "/api/customers")).body.data.some((c) => c.id === added.body.data.id), "the customer is gone for everyone");
@@ -178,45 +203,48 @@ test("episodes 5 to 7: the web app", async () => {
 
     // Episode 7. Twenty-seven customers only this run can find, nine of them active.
     const marker = `Zzsmoke${run}`;
-    const crowd = Array.from({ length: 27 }, (_, n) => ({
-      name: `${marker} ${String(n + 1).padStart(2, "0")}`,
-      email: `smoke-web-${run}-${n + 1}@example.com`,
-      status: n % 3 === 0 ? "active" : "lead",
-    }));
-    assert.deepEqual(await seedCustomers(api, crowd), { added: 27, skipped: 0 });
-    assert.deepEqual(await seedCustomers(api, crowd), { added: 0, skipped: 27 }, "seeding twice adds nothing");
+    for (let n = 0; n < 27; n++) {
+      const one = { first_name: marker, last_name: String(n + 1).padStart(2, "0"), email: `smoke-web-${run}-${n + 1}@example.com`, phone: "555-0100", status: n % 3 === 0 ? "active" : "lead" };
+      assert.equal((await sarah.request("POST", "/api/customers", one)).status, 201);
+    }
     const find = (who, query) => who.request("GET", `/api/customers?${new URLSearchParams(query)}`);
 
-    // One page is 25, whatever the browser asks for, and the cursor carries on from there.
+    // One page is 25, whatever the browser asks for, and the page number carries on from there.
     const everyone = await find(marcus, {});
     assert.equal(everyone.body.data.length, 25, "the list comes a page at a time");
-    assert.equal(typeof everyone.body.next_cursor, "string");
-    const first = await find(marcus, { q: marker.toUpperCase(), limit: "100", sort: "email" });
+    assert.equal(everyone.body.next_page, 2);
+    assert.ok(everyone.body.total >= 28, "and says how many there are in all");
+    const first = await find(marcus, { q: marker.toUpperCase(), per_page: "100", limit: "100", sort_by: "email" });
     assert.equal(first.status, 200, "staff can search");
     assert.equal(first.body.data.length, 25, "the browser does not choose the page size");
-    assert.ok(first.body.data.every((c) => c.name.startsWith(marker)), "found by name, whatever the capitals");
-    const second = await find(marcus, { q: marker, cursor: first.body.next_cursor });
+    assert.equal(first.body.total, 27);
+    assert.ok(first.body.data.every((c) => c.first_name === marker), "found by name, whatever the capitals");
+    assert.equal(first.body.data[0].last_name, "27", "newest first, whatever order the browser asks for");
+    const second = await find(marcus, { q: marker, page: String(first.body.next_page) });
     assert.equal(second.body.data.length, 2);
-    assert.equal(second.body.next_cursor, null, "the last page has no cursor");
+    assert.equal(second.body.next_page, null, "the last page has no next one");
     assert.equal(new Set([...first.body.data, ...second.body.data].map((c) => c.id)).size, 27, "nobody twice, nobody missing");
+
+    // The module's search looks at the email and the phone number as well.
+    const byEmail = await find(marcus, { q: `smoke-web-${run}-14@` });
+    assert.deepEqual(byEmail.body.data.map((c) => c.last_name), ["14"], "found by part of an email");
 
     // A status, alone with the search.
     const active = await find(sarah, { q: marker, status: "active" });
     assert.equal(active.body.data.length, 9);
     assert.ok(active.body.data.every((c) => c.status === "active"));
-    assert.equal(active.body.next_cursor, null);
-    assert.equal((await find(sarah, { q: marker, status: "archived" })).body.data.length, 25, "a status that does not exist is ignored");
+    assert.equal(active.body.next_page, null);
+    assert.equal((await find(sarah, { q: marker, status: "archived" })).body.total, 27, "a status that does not exist is ignored");
 
-    // Nobody matches; what was typed is text, not a pattern or a filter.
-    assert.deepEqual((await find(marcus, { q: `${marker} nobody` })).body, { data: [], next_cursor: null });
-    assert.deepEqual((await find(marcus, { q: "%" })).body.data, [], "% is looked for as a character");
-    assert.deepEqual((await find(marcus, { q: `${marker}_01` })).body.data, [], "so is _");
-    const sneaky = await find(marcus, { q: marker, "filter[status]": "active", "filter[email][contains]": "-1@" });
-    assert.equal(sneaky.body.data.length, 25, "a filter the app does not offer is not passed on");
+    // Nobody matches; a filter the app does not offer is not passed on.
+    assert.deepEqual((await find(marcus, { q: `${marker}nobody` })).body, { data: [], next_page: null, total: 0 });
+    const sneaky = await find(marcus, { q: marker, client_status_id: "1", "filter[status]": "active" });
+    assert.equal(sneaky.body.total, 27, "a filter the app does not offer is not passed on");
 
-    // A cursor that is not one, and one HyphaBase does not recognise.
-    assert.equal((await find(marcus, { cursor: "not a cursor!" })).status, 422);
-    assert.equal((await find(marcus, { cursor: btoa(JSON.stringify({ id: "nobody" })) })).status, 422);
+    // A page that is not one, and one past the end.
+    assert.equal((await find(marcus, { page: "two" })).status, 422);
+    assert.equal((await find(marcus, { page: "0" })).status, 422);
+    assert.deepEqual((await find(marcus, { q: marker, page: "9" })).body.data, [], "a page past the end is empty, not an error");
     assert.equal((await find(stranger, { q: marker })).status, 401);
 
     // Another site cannot use Sarah's browser.
@@ -240,9 +268,9 @@ test("episodes 5 to 7: the web app", async () => {
       assert.ok(!(await readFile(file, "utf8")).includes(config.key), `not in ${path.basename(file)}`);
     }
   } finally {
-    const { data: leftovers } = await api.request(`/api/modules/data/customers/records?filter[email][contains]=smoke-web-&select=email&limit=100`);
-    for (const customer of leftovers) {
-      if (customer.email.includes(run)) await deleteCustomer(api, customer.id);
+    const { data: leftovers } = await api.request(`/api/modules/clients?search=${encodeURIComponent(`smoke-web-`)}&per_page=100`, { locationId });
+    for (const client of leftovers) {
+      if (client.email.includes(run)) await api.request(`/api/modules/clients/${client.id}`, { method: "DELETE", locationId });
     }
     for (const { user } of [owner, staff]) {
       try {

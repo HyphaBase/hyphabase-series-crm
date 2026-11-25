@@ -23,9 +23,37 @@ export interface Call {
   path: string;
   bearer: string;
   location: string | null;
-  /** The query string, as the API would read it: { "filter[name][contains]": "dana", limit: "25" }. */
+  /** The query string, as the API would read it: { search: "dana", per_page: "25" }. */
   query: Record<string, string>;
   body: any;
+}
+
+/** The ids of the three statuses, as `npm run clients:setup` would have created them. */
+export const STATUS = {
+  lead: "50000000-0000-4000-8000-000000000001",
+  active: "50000000-0000-4000-8000-000000000002",
+  inactive: "50000000-0000-4000-8000-000000000003",
+};
+
+export interface FakeClient {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  status: string | null;
+}
+
+export interface FakeNote {
+  id: string;
+  client_id: string;
+  user_id: string;
+  user: { id: string; name: string; email: string };
+  category: string;
+  content: string;
+  visibility: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export const people = {
@@ -34,7 +62,7 @@ export const people = {
     name: "Sarah Mitchell",
     email: "sarah@brightsideclean.example",
     password: "correct-password",
-    permissions: ["data.records.read", "data.records.create", "data.records.update", "data.records.delete"],
+    permissions: ["clients.view", "clients.create", "clients.update", "clients.delete"],
     locations: [PORTLAND],
   }),
   marcus: (): FakeUser => ({
@@ -42,7 +70,7 @@ export const people = {
     name: "Marcus Bell",
     email: "marcus@brightsideclean.example",
     password: "correct-password",
-    permissions: ["data.records.read", "data.records.update"],
+    permissions: ["clients.view", "clients.update"],
     locations: [PORTLAND],
   }),
 };
@@ -51,10 +79,21 @@ export function fakeHyphaBase(users: FakeUser[] = [people.sarah(), people.marcus
   const calls: Call[] = [];
   const tokens = new Map<string, FakeUser>();
   const refreshTokens = new Map<string, FakeUser>();
-  const records: any[] = [
-    { id: "c0000000-0000-4000-8000-000000000001", name: "Dana Whitfield", email: "dana@example.com", phone: "555-0142", status: "lead" },
+  /** The statuses a client can have. A new environment has none until `npm run clients:setup` names them. */
+  const statuses: { id: string; name: string }[] = [
+    { id: STATUS.lead, name: "Lead" },
+    { id: STATUS.active, name: "Active" },
+    { id: STATUS.inactive, name: "Inactive" },
   ];
+  /** The clients, newest first. `status` is the id of the status the client has at Portland, or null. */
+  const records: FakeClient[] = [
+    { id: "c0000000-0000-4000-8000-000000000001", first_name: "Dana", last_name: "Whitfield", email: "dana@example.com", phone: "555-0142", status: STATUS.lead },
+  ];
+  const notes: FakeNote[] = [];
+  // A deleted client is archived, not gone: its email stays taken and it cannot be archived twice.
+  const archived: FakeClient[] = [];
   let issued = 0;
+  let made = 1;
 
   const json = (status: number, body?: unknown) =>
     new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -68,39 +107,49 @@ export function fakeHyphaBase(users: FakeUser[] = [people.sarah(), people.marcus
     return { token, refresh_token, expires_at: new Date(Date.now() + 3_600_000).toISOString() };
   };
 
+  /** A client the way the Clients module returns one. */
+  const shown = (client: FakeClient) => {
+    const status = statuses.find((candidate) => candidate.id === client.status);
+    return {
+      id: client.id,
+      first_name: client.first_name,
+      last_name: client.last_name,
+      name: `${client.first_name} ${client.last_name}`,
+      email: client.email,
+      phone: client.phone,
+      source: "local",
+      location_ids: [PORTLAND],
+      location_statuses: status ? [{ id: `ls-${client.id}`, client_id: client.id, location_id: PORTLAND, status, status_label: status.name }] : [],
+      created_at: "2026-11-23T10:00:00.000000Z",
+      updated_at: "2026-11-23T10:00:00.000000Z",
+    };
+  };
+
   /**
-   * The list grammar, as far as the CRM uses it: contains on name, an exact
-   * status, a limit and a cursor. Like the real API it refuses a field or
-   * a cursor it does not know with 422, and it never says how many
-   * records there are in total.
+   * The list, as far as the CRM uses it. Like the real API, `search` looks
+   * in the first name, the last name, the email and the phone number one
+   * at a time (so "dana whit" finds nobody), a page past the end is empty,
+   * and a parameter it does not know is ignored.
    */
   const list = (query: Record<string, string>) => {
+    const search = (query.search ?? "").toLowerCase();
+    const perPage = Number(query.per_page ?? 15);
+    const page = Number(query.page ?? 1);
+
     let matching = records;
-    let limit = 25;
-    let after: string | null = null;
+    if (search) matching = matching.filter((r) => [r.first_name, r.last_name, r.email, r.phone].some((value) => value.toLowerCase().includes(search)));
+    if (query.client_status_id) matching = matching.filter((r) => r.status === query.client_status_id);
 
-    for (const [key, value] of Object.entries(query)) {
-      if (key === "sort") continue;
-      if (key === "limit") limit = Number(value);
-      else if (key === "cursor") {
-        try {
-          after = JSON.parse(atob(value)).id;
-        } catch {
-          after = "";
-        }
-        if (typeof after !== "string" || !records.some((r) => r.id === after)) {
-          return json(422, { message: "The cursor does not match this query; start again without one.", errors: { cursor: ["The cursor does not match this query; start again without one."] } });
-        }
-      } else if (key === "filter[name][contains]") matching = matching.filter((r) => r.name.toLowerCase().includes(value.toLowerCase()));
-      else if (key === "filter[status]" || key === "filter[status][eq]") matching = matching.filter((r) => r.status === value);
-      else return json(422, { message: "Unknown field.", errors: { [key]: ["Unknown field."] } });
-    }
-
-    const start = after ? matching.findIndex((r) => r.id === after) + 1 : 0;
-    const page = matching.slice(start, start + limit);
-    const more = start + limit < matching.length;
-    return json(200, { data: page, meta: { next_cursor: more ? btoa(JSON.stringify({ created_at: "2026-11-23 10:00:00", id: page.at(-1).id })) : null } });
+    const data = matching.slice((page - 1) * perPage, page * perPage).map(shown);
+    return json(200, { data, meta: { current_page: page, last_page: Math.max(1, Math.ceil(matching.length / perPage)), per_page: perPage, total: matching.length } });
   };
+
+  const emailTaken = (id: string) => {
+    const message = `A client with this email already exists (id ${id}).`;
+    return json(422, { message, errors: { email: [message] } });
+  };
+
+  const missing = () => json(404, { message: "No query results for model [HyphaBase\\Clients\\Models\\Client]." });
 
   const fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = new URL(String(input));
@@ -146,33 +195,79 @@ export function fakeHyphaBase(users: FakeUser[] = [people.sarah(), people.marcus
       return json(200, { permissions: user.permissions });
     }
 
-    const record = call.path.match(/^\/api\/modules\/data\/customers\/records(?:\/(.+))?$/);
-    if (record) {
-      if (call.bearer !== SECRET_KEY) return json(403, { message: "Custom data is server-side only in this release: authenticate with a secret (sk_) API key." });
-      const id = record[1];
-      if (call.method === "GET" && !id) return list(call.query);
-      if (call.method === "POST" && !id) {
-        if (records.some((r) => r.email === call.body.email)) {
-          return json(422, { message: "A record with the same unique value already exists.", errors: { record: ["A record with the same unique value already exists."] } });
-        }
-        const created = { id: `c0000000-0000-4000-8000-00000000000${records.length + 1}`, phone: null, status: "lead", ...call.body };
-        records.unshift(created);
+    if (route === "GET /api/modules/clients/client-statuses") {
+      if (call.bearer !== SECRET_KEY) return json(403, { message: "Not the server." });
+      return json(200, { data: statuses });
+    }
+
+    // Notes are sent as the person, so HyphaBase checks their role itself and records who wrote each one.
+    const note = call.path.match(/^\/api\/modules\/clients\/([^/]+)\/notes$/);
+    if (note) {
+      const user = tokens.get(call.bearer);
+      if (!user) return json(401, { message: "Unauthenticated." });
+      if (!call.location || !user.locations.includes(call.location)) return json(403, { message: "This credential cannot reach that location." });
+      const needed = call.method === "GET" ? "clients.view" : "clients.update";
+      if (!user.permissions.includes(needed)) return json(403, { message: `Your role does not include the '${needed}' permission.`, required_permission: needed });
+      if (!records.some((r) => r.id === note[1])) return missing();
+
+      if (call.method === "GET") return json(200, { data: notes.filter((n) => n.client_id === note[1]) });
+      if (call.method === "POST") {
+        const created: FakeNote = {
+          id: `n0000000-0000-4000-8000-00000000000${notes.length + 1}`,
+          client_id: note[1],
+          user_id: user.id,
+          user: { id: user.id, name: user.name, email: user.email },
+          category: call.body.category,
+          content: call.body.content,
+          visibility: call.body.visibility,
+          created_at: `2026-11-24T09:0${notes.length}:00.000000Z`,
+          updated_at: `2026-11-24T09:0${notes.length}:00.000000Z`,
+        };
+        notes.unshift(created);
         return json(201, { data: created });
       }
-      if (call.method === "PATCH" && id) {
-        const existing = records.find((r) => r.id === id);
-        if (!existing) return json(404, { message: "Record not found." });
-        if (call.body.email !== undefined && records.some((r) => r.id !== id && r.email === call.body.email)) {
-          return json(422, { message: "A record with the same unique value already exists.", errors: { record: ["A record with the same unique value already exists."] } });
-        }
-        Object.assign(existing, call.body);
-        return json(200, { data: existing });
+    }
+
+    const assign = call.path.match(/^\/api\/modules\/clients\/([^/]+)\/statuses$/);
+    if (assign && call.method === "POST") {
+      if (call.bearer !== SECRET_KEY) return json(403, { message: "Not the server." });
+      const existing = records.find((r) => r.id === assign[1]);
+      if (!existing) return missing();
+      if (!statuses.some((status) => status.id === call.body.client_status_id)) return json(422, { message: "The selected client status id is invalid.", errors: { client_status_id: ["The selected client status id is invalid."] } });
+      existing.status = call.body.client_status_id;
+      return json(201, { data: shown(existing).location_statuses[0] });
+    }
+
+    const client = call.path.match(/^\/api\/modules\/clients(?:\/([^/]+))?$/);
+    if (client) {
+      // The CRM reads and writes clients as the server, after it has checked the person's role itself.
+      if (call.bearer !== SECRET_KEY) return json(403, { message: "Not the server." });
+      if (call.location !== PORTLAND) return json(400, { message: "Send X-Location-Id." });
+      const id = client[1];
+      if (call.method === "GET" && !id) return list(call.query);
+      if (call.method === "POST" && !id) {
+        const taken = [...records, ...archived].find((r) => r.email === call.body.email);
+        if (taken) return emailTaken(taken.id);
+        made += 1;
+        const created: FakeClient = { id: `c0000000-0000-4000-8000-00000000000${made}`, status: null, ...call.body };
+        records.unshift(created);
+        return json(201, { data: shown(created) });
       }
-      if (call.method === "DELETE" && id) {
-        const index = records.findIndex((r) => r.id === id);
-        if (index < 0) return json(404, { message: "Record not found." });
-        records.splice(index, 1);
-        return json(204);
+      const existing = records.find((r) => r.id === id);
+      if (!existing && call.method === "DELETE" && archived.some((r) => r.id === id)) {
+        return json(409, { message: "Client is already archived. Restore it or permanently delete it instead." });
+      }
+      if (!existing) return missing();
+      if (call.method === "GET") return json(200, { data: shown(existing) });
+      if (call.method === "PATCH") {
+        const taken = call.body.email === undefined ? undefined : records.find((r) => r.id !== id && r.email === call.body.email);
+        if (taken) return emailTaken(taken.id);
+        Object.assign(existing, call.body);
+        return json(200, { data: shown(existing) });
+      }
+      if (call.method === "DELETE") {
+        archived.push(...records.splice(records.indexOf(existing), 1));
+        return json(200, { message: "Client archived successfully. You can restore it within 30 days." });
       }
     }
 
@@ -183,6 +278,8 @@ export function fakeHyphaBase(users: FakeUser[] = [people.sarah(), people.marcus
     fetch,
     calls,
     records,
+    statuses,
+    notes,
     /** Ends a token the way signing out elsewhere or an expiry would. */
     revoke(token: string) {
       tokens.delete(token);

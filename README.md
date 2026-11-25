@@ -15,8 +15,9 @@ The example app from the **Build a CRM with HyphaBase** series. One small CRM, b
 | 5 | The SDK and a real frontend: sign in, see the customers and add one, in a browser | [episode-05-sdk-frontend](episodes/episode-05-sdk-frontend.md) | [Connect a Next.js frontend to a backend API](https://hyphabase.com/blog/connect-nextjs-frontend-to-backend-typescript) |
 | 6 | Editing and deleting customers: Staff can correct a customer, only the Owner can remove one | [episode-06-update-delete](episodes/episode-06-update-delete.md) | [Securely update and delete records in Next.js](https://hyphabase.com/blog/secure-update-delete-nextjs-typescript) |
 | 7 | Searching, filtering and paging: find a customer by name and status, 25 at a time | [episode-07-search-paging](episodes/episode-07-search-paging.md) | coming soon |
+| 8 | The Clients module: the customers move into it, and each one gets notes that say who wrote them | [episode-08-clients-notes](episodes/episode-08-clients-notes.md) | coming soon |
 
-To see the code as it stood at the end of an episode, check out its tag: `episode-02-customers`, `episode-03-authentication`, `episode-04-permissions`, `episode-05-sdk-frontend`, `episode-06-update-delete` or `episode-07-search-paging`. Episode 1 is all console, so it has no tag.
+To see the code as it stood at the end of an episode, check out its tag: `episode-02-customers`, `episode-03-authentication`, `episode-04-permissions`, `episode-05-sdk-frontend`, `episode-06-update-delete`, `episode-07-search-paging` or `episode-08-clients-notes`. Episode 1 is all console, so it has no tag.
 
 ## Run it
 
@@ -113,9 +114,20 @@ npm run web
 
 Type in the search box and the list narrows as you type. The address bar keeps the search, so a reload shows the same list.
 
+From episode 8 the customers live in HyphaBase's Clients module, and each one has notes. The key needs the `clients.view`, `clients.create`, `clients.update`, `clients.delete`, `clients.view_name`, `clients.view_email`, `clients.view_phone`, `client_statuses.view` and `client_statuses.manage` scopes (see [the guide](episodes/episode-08-clients-notes.md)):
+
+```bash
+npm run clients:setup     # create the Lead, Active and Inactive statuses
+npm run customers:move    # copy the customers into the Clients module; safe to run again
+npm run roles:setup       # adds the client permissions to the roles you already have
+npm run web
+```
+
+Every row has a **Notes** button. A note shows who wrote it and when, and neither comes from the browser.
+
 ## What this is, and isn't, so far
 
-After episode 7 the CRM has a data foundation (a real table with typed fields, a unique email and a default status), a sign-in, roles, and screens: a Next.js app whose pages hold no key and no token, and whose server refuses every request that does not come from a signed-in user whose role allows it. A person can see the customers, find one by name or status, add one, correct one and, with the Owner role, delete one. The list comes 25 at a time, searched by HyphaBase and not in the browser. Search looks at names only, there is no total count, and a deleted customer cannot be brought back from the screen.
+After episode 8 the CRM has a sign-in, roles, screens, and its customers in HyphaBase's Clients module: a Next.js app whose pages hold no key and no token, and whose server refuses every request that does not come from a signed-in user whose role allows it. A person can see the customers, find one by name, email, phone number or status, add one, correct one, write a note on one and, with the Owner role, delete one. The list comes 25 at a time, searched by HyphaBase and not in the browser. A note says who wrote it and when. Search looks for one word at a time, a note cannot be edited or deleted, and a deleted customer is archived at HyphaBase but cannot be brought back from the screen.
 
 ## Keep your secret key secret
 
@@ -136,6 +148,8 @@ In the web app only `web/lib/server.ts` reads the secret key. It is marked serve
 | `This API key does not have access to the requested location.` | In the console, open the key's **Access** settings and grant it the location. |
 | `email: The email has already been taken.` | That user already exists. Sign in, or pass a different `--email` to `user:add`. |
 | `403 Your role does not allow this.` | Episode 4 on: you are signed in, but your role lacks the permission. `npm run crm:me` shows what you have; `npm run role:give` gives a user a role. |
+| The web app says `The CRM is not set up yet. Run: npm run clients:setup` | Episode 8 on: the Clients module has no statuses yet. Run that command. |
+| Signed in, but `Your role does not allow this.` on the customer list | Episode 8 on: the roles still carry only the collection's permissions. Run `npm run roles:setup` again. |
 | A person with the Staff role has no **Edit** button | Episode 6 on: the roles are still episode 4's. Add the `roles.update` scope to the key and run `npm run roles:setup` again. |
 | `No user with the email ...` | `role:give` could not find that user. Create them with `npm run user:add` first. |
 | `Active employees limit reached (5 of 5 used).` | Your plan's user limit. `npm run smoke` creates three test users while it runs and removes them afterwards only if the key has the `users.delete` scope. |
