@@ -73,7 +73,9 @@ The old permissions stay on the roles, so the server from episode 4 still works.
 | [`src/roles.js`](../src/roles.js) | The Owner and Staff roles gain the client permissions. |
 | [`web/lib/permissions.ts`](../web/lib/permissions.ts) | The four things the CRM checks, under their new names. |
 | [`web/lib/customers.ts`](../web/lib/customers.ts) | A customer has a first and a last name and a phone number. `parseNote`. Pages are numbered. |
-| [`web/lib/crm.ts`](../web/lib/crm.ts) | Every customer function now talks to the Clients module. New: `listNotes` and `addNote`. |
+| [`web/lib/crm.ts`](../web/lib/crm.ts) | Every customer function now talks to the Clients module. New: `listNotes` and `addNote`. Functions no longer take a session; `signedIn()` finds it. |
+| [`web/lib/server.ts`](../web/lib/server.ts) | Keeps each person's session in a cookie with the SDK's `cookieStorage`. `web/lib/session-cookie.ts`, which did that by hand since episode 5, is gone. |
+| [`web/package.json`](../web/package.json) | `hyphabase` 0.0.3, which has `cookieStorage` and the status and sort options on `clients.list`. |
 | [`web/app/api/customers/[id]/notes/route.ts`](../web/app/api/customers/%5Bid%5D/notes/route.ts) | `GET` and `POST` for one customer's notes. |
 | [`web/components/notes.tsx`](../web/components/notes.tsx) | The notes panel. |
 | [`web/components/customers.tsx`](../web/components/customers.tsx), [`web/components/customer-form.tsx`](../web/components/customer-form.tsx) | A **Notes** button on every row; the form asks for a first and a last name. |
@@ -113,19 +115,27 @@ Until now every request for data went to HyphaBase as the server, with the secre
 So a note is the one thing the CRM sends as the person ([`web/lib/crm.ts`](../web/lib/crm.ts), shown here without its error handling):
 
 ```ts
-const user = await requirePermission(session, CAN.updateCustomers);   // 401 or 403
+const hyphabase = await signedIn();
+const user = await requirePermission(hyphabase, CAN.updateCustomers);   // 401 or 403
 
-const parsed = parseNote(input);                                      // the text. Nothing else.
+const parsed = parseNote(input);                                        // the text. Nothing else.
 if (!parsed.ok) throw refuse(422, { error: parsed.error });
 
-const note = await actingAs(session).clients.notes(id).create({
+const note = await hyphabase.clients.notes(id).create({
   category: "General",
   content: parsed.content,
   visibility: "internal",
 });
 ```
 
-`actingAs(session)` is the SDK client that carries the person's own token, the one that has only been used for "who am I" since episode 5. HyphaBase checks their role a second time and records them as the author. The browser sends one thing, the text. A request that adds `"author": "Somebody Else"` gets a note signed by whoever is signed in, because the server never reads that field.
+`signedIn()` is the SDK, signed in as whoever sent the request. In a browser the SDK remembers who signed in. A server answers Sarah and Marcus at the same time, so it reads the session from the cookie of the request it is answering. The SDK's `cookieStorage` does that ([`web/lib/server.ts`](../web/lib/server.ts)):
+
+```ts
+const session = async () =>
+  cookieStorage(await cookies(), { name: "crm_session", sameSite: "strict", maxAge: null, secure: ... });
+```
+
+Nothing is passed along by hand: sign in, and every later request from that browser is that person. HyphaBase checks their role a second time and records them as the author. The browser sends one thing, the text. A request that adds `"author": "Somebody Else"` gets a note signed by whoever is signed in, because the server never reads that field.
 
 `"internal"` keeps the note among the people who work at Brightside. The category is the module's way to group notes; the CRM uses one.
 
@@ -134,13 +144,14 @@ const note = await actingAs(session).clients.notes(id).create({
 `listCustomers` asks the Clients module what it used to ask the collection:
 
 ```ts
-const query = new URLSearchParams();
-if (q) query.set("search", q);
-if (status) query.set("client_status_id", await statusId(status));
-query.set("sort_by", "created_at");
-query.set("sort_direction", "desc");
-query.set("per_page", String(PAGE_SIZE));
-query.set("page", String(page));
+const { data, meta } = await clients.list({
+  search: q || undefined,
+  statusId: status ? await statusId(status) : undefined,
+  sortBy: "created_at",
+  sortDirection: "desc",
+  perPage: PAGE_SIZE,
+  page,
+});
 ```
 
 The browser still controls a search, a status and which page, and nothing else.

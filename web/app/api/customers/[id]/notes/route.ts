@@ -4,11 +4,11 @@ type Context = { params: Promise<{ id: string }> };
 
 export async function GET(request: Request, { params }: Context) {
   const { id } = await params;
-  return respond(request, (crm, session) => crm.listNotes(session, id));
+  return respond(request, (crm) => crm.listNotes(id));
 }
 
 export async function POST(request: Request, { params }: Context) {
   const { id } = await params;
   const body = await bodyOf(request);
-  return respond(request, (crm, session) => crm.addNote(session, id, body));
+  return respond(request, (crm) => crm.addNote(id, body));
 }

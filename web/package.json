@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "hyphabase": "^0.0.1",
+    "hyphabase": "^0.0.3",
     "next": "^16.2.11",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

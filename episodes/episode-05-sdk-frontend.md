@@ -43,7 +43,7 @@ That also installs the HyphaBase SDK, the [`hyphabase`](https://www.npmjs.com/pa
 | --- | --- |
 | [`web/lib/crm.ts`](../web/lib/crm.ts) | The CRM's server side: sign in, who am I, list, add and delete customers, sign out. Uses the SDK. Knows nothing about Next.js. |
 | [`web/lib/customers.ts`](../web/lib/customers.ts) | What a customer is, and the checks on a new one. |
-| [`web/lib/session-cookie.ts`](../web/lib/session-cookie.ts) | Keeps a person's session in a cookie the page's scripts cannot read. |
+| [`web/lib/session-cookie.ts`](https://github.com/HyphaBase/hyphabase-series-crm/blob/episode-05-sdk-frontend/web/lib/session-cookie.ts) | Keeps a person's session in a cookie the page's scripts cannot read. (Since episode 8 the SDK's `cookieStorage` does this, and the file is gone.) |
 | [`web/lib/server.ts`](../web/lib/server.ts) | Builds the CRM from `.env` and connects it to a request. Marked server-only. |
 | [`web/app/api/`](../web/app/api) | The Route Handlers. Each is three or four lines. |
 | [`web/lib/api.ts`](../web/lib/api.ts) | What the pages call: this app's own `/api/...` routes. |
@@ -135,7 +135,7 @@ That is why it is not built with the secret key. A client that holds a secret ke
 
 ## The session lives in a cookie
 
-When Sarah signs in, the browser sends her email and password to this app's `/api/login`. The server signs her in with the SDK and keeps the session in a cookie ([`web/lib/session-cookie.ts`](../web/lib/session-cookie.ts)):
+When Sarah signs in, the browser sends her email and password to this app's `/api/login`. The server signs her in with the SDK and keeps the session in a cookie ([`web/lib/session-cookie.ts`](https://github.com/HyphaBase/hyphabase-series-crm/blob/episode-05-sdk-frontend/web/lib/session-cookie.ts)):
 
 ```ts
 jar.set(SESSION_COOKIE, encodeSession(session), {

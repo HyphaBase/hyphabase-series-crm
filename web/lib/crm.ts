@@ -4,7 +4,7 @@
  * It does what the small server from episodes 3 and 4 did (src/server.js),
  * now through the HyphaBase SDK instead of hand-written requests:
  *
- *   signIn          email + password  ->  a session, kept by the caller
+ *   signIn          email + password  ->  a session, kept in the person's cookie
  *   me              who am I, and what may I do
  *   listCustomers   needs clients.view; one page, searched and filtered by HyphaBase
  *   addCustomer     needs clients.create
@@ -17,12 +17,13 @@
  * Since episode 8 the customers live in HyphaBase's Clients module, not in
  * a collection of our own. The CRM still calls them customers.
  *
- * Nothing in this file knows about Next.js. Each function takes the place
- * the session is kept and plain input, and returns a status and a body.
- * The files under app/api/ are the thin layer that connects them to HTTP.
+ * Nothing in this file knows about Next.js. It is told where the session
+ * of the current request is kept (config.session), and each function takes
+ * plain input and returns a status and a body. The files under app/api/
+ * are the thin layer that connects them to HTTP.
  */
 
-import { createClient, HyphaBaseError, memoryStorage, type ClientNote, type Paginated, type SessionStorageAdapter } from "hyphabase";
+import { createClient, HyphaBaseError, memoryStorage, type ClientNote, type HyphaBaseClient, type SessionStorageAdapter } from "hyphabase";
 import { PAGE_SIZE, parseCustomer, parseCustomerChanges, parseListQuery, parseNote, STATUSES, toCustomer, type ClientRecord, type Note, type Status } from "./customers";
 import { CAN, type Permission } from "./permissions";
 
@@ -33,6 +34,8 @@ export interface CrmConfig {
   secretKey: string;
   publishableKey: string;
   locationId: string;
+  /** Where the session of the request being answered is kept. In the app, that is the person's cookie. */
+  session: () => SessionStorageAdapter | Promise<SessionStorageAdapter>;
   fetch?: typeof fetch;
   log?: (line: string) => void;
 }
@@ -115,27 +118,26 @@ export function createCrm(config: CrmConfig) {
   });
 
   /**
-   * One person. This client holds the publishable key, which can read
-   * nothing on its own, so without a session HyphaBase accepts it has no
-   * way to act. It must never be given the secret key: the SDK falls back
-   * to a secret key when a session runs out, and the request would then
-   * go out as the server.
+   * The SDK, signed in as whoever sent this request. This client holds the
+   * publishable key, which can read nothing on its own, so without a
+   * session HyphaBase accepts it has no way to act. It must never be given
+   * the secret key: the SDK falls back to a secret key when a session runs
+   * out, and the request would then go out as the server.
    */
-  const actingAs = (session: SessionStorageAdapter) =>
-    createClient(apiUrl, publishableKey, { locationId, storage: session, fetch: config.fetch });
+  const signedIn = async () =>
+    createClient(apiUrl, publishableKey, { locationId, storage: await config.session(), fetch: config.fetch });
 
   /** Who the session belongs to and what their roles allow, both asked of HyphaBase. */
-  async function identify(session: SessionStorageAdapter): Promise<{ user: Person; permissions: string[] }> {
-    if (!session.get()) throw refuse(401, { error: "Sign in first." });
+  async function identify(hyphabase: HyphaBaseClient): Promise<{ user: Person; permissions: string[] }> {
+    if (!hyphabase.auth.getSession()) throw refuse(401, { error: "Sign in first." });
 
-    const person = actingAs(session);
     try {
-      const { user } = await person.profile.get();
-      const { permissions } = await person.profile.permissions();
+      const { user } = await hyphabase.profile.get();
+      const { permissions } = await hyphabase.profile.permissions();
       return { user: { id: user.id, name: user.name, email: user.email }, permissions };
     } catch (error) {
       if (error instanceof HyphaBaseError && error.status === 401) {
-        session.clear();
+        hyphabase.auth.clearSession();
         throw refuse(401, { error: "Your session is not valid. Sign in again." });
       }
       if (error instanceof HyphaBaseError && error.status === 403) {
@@ -146,8 +148,8 @@ export function createCrm(config: CrmConfig) {
   }
 
   /** The signed-in person, if their role carries the permission. Otherwise the request ends with 401 or 403. */
-  async function requirePermission(session: SessionStorageAdapter, permission: Permission): Promise<Person> {
-    const { user, permissions } = await identify(session);
+  async function requirePermission(hyphabase: HyphaBaseClient, permission: Permission): Promise<Person> {
+    const { user, permissions } = await identify(hyphabase);
     if (permissions.includes(permission)) return user;
 
     log(`${user.email} was refused: no ${permission}`);
@@ -172,18 +174,18 @@ export function createCrm(config: CrmConfig) {
   }
 
   return {
-    signIn: (session: SessionStorageAdapter, input: unknown) =>
+    signIn: (input: unknown) =>
       answer("sign in", async () => {
         const { email, password } = (input ?? {}) as Record<string, unknown>;
         if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
           throw refuse(400, { error: "Send an email and a password." });
         }
 
-        const person = actingAs(session);
+        const hyphabase = await signedIn();
         try {
-          const { user, locationIds } = await person.auth.signIn({ email, password });
+          const { user, locationIds } = await hyphabase.auth.signIn({ email, password });
           if (!locationIds.includes(locationId)) {
-            await person.auth.signOut();
+            await hyphabase.auth.signOut();
             throw refuse(403, { error: "Your account does not belong to this location." });
           }
           return { status: 200, body: { user: { id: user.id, name: user.name, email: user.email } } };
@@ -194,33 +196,32 @@ export function createCrm(config: CrmConfig) {
         }
       }),
 
-    me: (session: SessionStorageAdapter) =>
-      answer("who am I", async () => ({ status: 200, body: await identify(session) })),
+    me: () =>
+      answer("who am I", async () => ({ status: 200, body: await identify(await signedIn()) })),
 
-    listCustomers: (session: SessionStorageAdapter, input?: unknown) =>
+    listCustomers: (input?: unknown) =>
       answer("list customers", async () => {
-        await requirePermission(session, CAN.readCustomers);
+        await requirePermission(await signedIn(), CAN.readCustomers);
 
         const parsed = parseListQuery(input);
         if (!parsed.ok) throw noSuchPage();
         const { q, status, page } = parsed.query;
 
-        // The parameter names, the order and the page size are written here. The browser supplies two values and a page number.
-        const query = new URLSearchParams();
-        if (q) query.set("search", q);
-        if (status) query.set("client_status_id", await statusId(status));
-        query.set("sort_by", "created_at");
-        query.set("sort_direction", "desc");
-        query.set("per_page", String(PAGE_SIZE));
-        query.set("page", String(page));
-
-        const { data, meta } = await server.request<Paginated<ClientRecord>>(`/api/modules/clients?${query}`);
+        // The order and the page size are written here. The browser supplies two values and a page number.
+        const { data, meta } = await clients.list({
+          search: q || undefined,
+          statusId: status ? await statusId(status) : undefined,
+          sortBy: "created_at",
+          sortDirection: "desc",
+          perPage: PAGE_SIZE,
+          page,
+        });
         return { status: 200, body: { data: data.map(shown), next_page: meta.current_page < meta.last_page ? meta.current_page + 1 : null, total: meta.total } };
       }),
 
-    addCustomer: (session: SessionStorageAdapter, input: unknown) =>
+    addCustomer: (input: unknown) =>
       answer("add customer", async () => {
-        const user = await requirePermission(session, CAN.addCustomers);
+        const user = await requirePermission(await signedIn(), CAN.addCustomers);
 
         const parsed = parseCustomer(input);
         if (!parsed.ok) throw refuse(422, { error: "Check the highlighted fields.", errors: parsed.errors });
@@ -241,9 +242,9 @@ export function createCrm(config: CrmConfig) {
         return { status: 201, body: { data: { ...shown(client), status } } };
       }),
 
-    updateCustomer: (session: SessionStorageAdapter, id: string, input: unknown) =>
+    updateCustomer: (id: string, input: unknown) =>
       answer("update customer", async () => {
-        const user = await requirePermission(session, CAN.updateCustomers);
+        const user = await requirePermission(await signedIn(), CAN.updateCustomers);
         if (!CUSTOMER_ID.test(id)) throw noSuchCustomer();
 
         const parsed = parseCustomerChanges(input);
@@ -267,9 +268,9 @@ export function createCrm(config: CrmConfig) {
       }),
 
     /** The Clients module archives a deleted client and keeps it for 30 days, so a mistake can be undone at HyphaBase. */
-    deleteCustomer: (session: SessionStorageAdapter, id: string) =>
+    deleteCustomer: (id: string) =>
       answer("delete customer", async () => {
-        const user = await requirePermission(session, CAN.deleteCustomers);
+        const user = await requirePermission(await signedIn(), CAN.deleteCustomers);
         if (!CUSTOMER_ID.test(id)) throw noSuchCustomer();
 
         try {
@@ -284,17 +285,18 @@ export function createCrm(config: CrmConfig) {
       }),
 
     /**
-     * Notes are the one thing the CRM sends as the person and not as the
-     * server. HyphaBase checks their role again and, on a new note, records
+     * Notes are the one thing the CRM sends as the signed-in person and not
+     * as the server. HyphaBase checks their role again and, on a new note, records
      * them as its author: a name the browser cannot choose.
      */
-    listNotes: (session: SessionStorageAdapter, id: string) =>
+    listNotes: (id: string) =>
       answer("list notes", async () => {
-        await requirePermission(session, CAN.readCustomers);
+        const hyphabase = await signedIn();
+        await requirePermission(hyphabase, CAN.readCustomers);
         if (!CUSTOMER_ID.test(id)) throw noSuchCustomer();
 
         try {
-          const { data } = await actingAs(session).clients.notes(id).list();
+          const { data } = await hyphabase.clients.notes(id).list();
           return { status: 200, body: { data: data.map(toNote) } };
         } catch (error) {
           if (error instanceof HyphaBaseError && error.status === 404) throw noSuchCustomer();
@@ -302,9 +304,10 @@ export function createCrm(config: CrmConfig) {
         }
       }),
 
-    addNote: (session: SessionStorageAdapter, id: string, input: unknown) =>
+    addNote: (id: string, input: unknown) =>
       answer("add note", async () => {
-        const user = await requirePermission(session, CAN.updateCustomers);
+        const hyphabase = await signedIn();
+        const user = await requirePermission(hyphabase, CAN.updateCustomers);
         if (!CUSTOMER_ID.test(id)) throw noSuchCustomer();
 
         const parsed = parseNote(input);
@@ -313,7 +316,7 @@ export function createCrm(config: CrmConfig) {
         let note: ClientNote;
         try {
           // "internal" keeps a note among the people who work here. The category is the module's way to group notes; the CRM uses one.
-          note = await actingAs(session).clients.notes(id).create({
+          note = await hyphabase.clients.notes(id).create({
             category: "General",
             content: parsed.content,
             visibility: "internal",
@@ -326,10 +329,10 @@ export function createCrm(config: CrmConfig) {
         return { status: 201, body: { data: toNote(note) } };
       }),
 
-    signOut: (session: SessionStorageAdapter) =>
+    signOut: () =>
       answer("sign out", async () => {
         // Revokes the token at HyphaBase, then forgets it here.
-        await actingAs(session).auth.signOut();
+        await (await signedIn()).auth.signOut();
         return { status: 204 };
       }),
   };
