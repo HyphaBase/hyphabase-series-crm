@@ -11,6 +11,8 @@
     "customer:add": "node --env-file=.env src/add-customer.js",
     "customer:list": "node --env-file=.env src/list-customers.js",
     "customer:seed": "node --env-file=.env src/seed-customers.js",
+    "clients:setup": "node --env-file=.env src/setup-clients.js",
+    "customers:move": "node --env-file=.env src/move-customers.js",
     "user:add": "node --env-file=.env src/add-user.js",
     "roles:setup": "node --env-file=.env src/setup-roles.js",
     "role:give": "node --env-file=.env src/give-role.js",

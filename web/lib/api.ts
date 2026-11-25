@@ -5,7 +5,7 @@
  * itself.
  */
 
-import { toSearch, type Customer, type CustomerChanges, type CustomerErrors, type CustomerInput, type ListFilter } from "./customers";
+import { toSearch, type Customer, type CustomerChanges, type CustomerErrors, type CustomerInput, type ListFilter, type Note } from "./customers";
 
 export interface Me {
   user: { id: string; name: string; email: string };
@@ -14,7 +14,10 @@ export interface Me {
 
 export interface CustomerPage {
   data: Customer[];
-  next_cursor: string | null;
+  /** The number of the page after this one, or null on the last. */
+  next_page: number | null;
+  /** How many customers match in all, on every page. */
+  total: number;
 }
 
 /** A refusal from the server: the status, a sentence for the person, and any per-field messages. */
@@ -57,9 +60,12 @@ export const api = {
   },
   signIn: (email: string, password: string) => call<{ user: Me["user"] }>("POST", "/api/login", { email, password }),
   signOut: () => call<null>("POST", "/api/logout"),
-  /** One page of customers that match, and the cursor for the page after it (null on the last one). */
-  customers: (filter: ListFilter, cursor?: string | null) => call<CustomerPage>("GET", `/api/customers${toSearch({ ...filter, cursor })}`),
+  /** One page of customers that match, the number of the page after it (null on the last one), and the total. */
+  customers: (filter: ListFilter, page?: number | null) => call<CustomerPage>("GET", `/api/customers${toSearch({ ...filter, page })}`),
   addCustomer: async (customer: CustomerInput) => (await call<{ data: Customer }>("POST", "/api/customers", customer)).data,
   updateCustomer: async (id: string, changes: CustomerChanges) => (await call<{ data: Customer }>("PATCH", `/api/customers/${id}`, changes)).data,
   deleteCustomer: (id: string) => call<null>("DELETE", `/api/customers/${id}`),
+  /** The notes on one customer, newest first. */
+  notes: async (id: string) => (await call<{ data: Note[] }>("GET", `/api/customers/${id}/notes`)).data,
+  addNote: async (id: string, content: string) => (await call<{ data: Note }>("POST", `/api/customers/${id}/notes`, { content })).data,
 };

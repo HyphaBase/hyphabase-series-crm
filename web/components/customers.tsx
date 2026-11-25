@@ -5,15 +5,16 @@ import { api, ApiError } from "@/lib/api";
 import { addPage, describeList, readListQuery, STATUSES, toSearch, type Customer, type ListFilter, type Status } from "@/lib/customers";
 import { CAN } from "@/lib/permissions";
 import { CustomerForm } from "./customer-form";
+import { Notes } from "./notes";
 
-/** `shows` is the filter the rows on screen answer, and `nextCursor` is where the page after them starts, if there is one. */
-type List = { step: "loading" } | { step: "ready"; customers: Customer[]; nextCursor: string | null; shows: ListFilter } | { step: "failed"; message: string };
+/** `shows` is the filter the rows on screen answer, `nextPage` is the page after them, if there is one, and `total` is how many match in all. */
+type List = { step: "loading" } | { step: "ready"; customers: Customer[]; nextPage: number | null; total: number; shows: ListFilter } | { step: "failed"; message: string };
 
 // How long to wait after the last keystroke before asking the server.
 const TYPING_PAUSE = 250;
 
-/** What the form above the table is doing, if it is open. */
-type Form = { job: "add" } | { job: "edit"; customer: Customer } | null;
+/** What the panel above the table is doing, if it is open: a form, or one customer's notes. */
+type Form = { job: "add" } | { job: "edit"; customer: Customer } | { job: "notes"; customer: Customer } | null;
 
 export function Customers({ permissions, onSessionEnded }: { permissions: string[]; onSessionEnded: () => void }) {
   // The filter starts from the address, so a reload or a bookmark shows the same list.
@@ -34,14 +35,14 @@ export function Customers({ permissions, onSessionEnded }: { permissions: string
   const mayEdit = permissions.includes(CAN.updateCustomers);
   const mayDelete = permissions.includes(CAN.deleteCustomers);
 
-  // A new filter means a new list from the top: page one, and the cursor that goes with it.
+  // A new filter means a new list from the top: page one.
   useEffect(() => {
     const request = ++asked.current;
     window.history.replaceState(null, "", window.location.pathname + toSearch(filter));
     api.customers(filter).then(
       (page) => {
         if (request !== asked.current) return;
-        setList({ step: "ready", customers: page.data, nextCursor: page.next_cursor, shows: filter });
+        setList({ step: "ready", customers: page.data, nextPage: page.next_page, total: page.total, shows: filter });
         setLoadingMore(false);
       },
       (error) => {
@@ -67,14 +68,14 @@ export function Customers({ permissions, onSessionEnded }: { permissions: string
   }
 
   async function loadMore() {
-    if (list.step !== "ready" || !list.nextCursor) return;
+    if (list.step !== "ready" || !list.nextPage) return;
     const request = asked.current;
     setLoadingMore(true);
     setProblem(null);
     try {
-      const page = await api.customers(list.shows, list.nextCursor);
+      const page = await api.customers(list.shows, list.nextPage);
       if (request !== asked.current) return;
-      setList((current) => (current.step === "ready" ? { ...current, customers: addPage(current.customers, page.data), nextCursor: page.next_cursor } : current));
+      setList((current) => (current.step === "ready" ? { ...current, customers: addPage(current.customers, page.data), nextPage: page.next_page, total: page.total } : current));
     } catch (error) {
       if (request !== asked.current) return;
       if (error instanceof ApiError && error.status === 401) return onSessionEnded();
@@ -83,8 +84,13 @@ export function Customers({ permissions, onSessionEnded }: { permissions: string
     setLoadingMore(false);
   }
 
+  /** Changes the rows on screen, and the total by as many as were added or taken away. */
   const change = (customers: (current: Customer[]) => Customer[]) =>
-    setList((current) => (current.step === "ready" ? { ...current, customers: customers(current.customers) } : current));
+    setList((current) => {
+      if (current.step !== "ready") return current;
+      const next = customers(current.customers);
+      return { ...current, customers: next, total: current.total + next.length - current.customers.length };
+    });
 
   function saved(customer: Customer) {
     change((customers) => (customers.some((c) => c.id === customer.id) ? customers.map((c) => (c.id === customer.id ? customer : c)) : [customer, ...customers]));
@@ -104,7 +110,7 @@ export function Customers({ permissions, onSessionEnded }: { permissions: string
     try {
       await api.deleteCustomer(customer.id);
       change((customers) => customers.filter((c) => c.id !== customer.id));
-      setForm((current) => (current?.job === "edit" && current.customer.id === customer.id ? null : current));
+      setForm((current) => (current && current.job !== "add" && current.customer.id === customer.id ? null : current));
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) return onSessionEnded();
       setProblem(error instanceof Error ? error.message : "Something went wrong.");
@@ -123,14 +129,17 @@ export function Customers({ permissions, onSessionEnded }: { permissions: string
         <div>
           <h1>Customers</h1>
           <p className="muted">
-            {list.step === "ready" ? describeList(list.customers.length, Boolean(list.nextCursor), list.shows) : "Portland"}
+            {list.step === "ready" ? describeList(list.customers.length, list.total, list.shows) : "Portland"}
           </p>
         </div>
         {mayAdd && !form && <button className="button primary" onClick={() => open({ job: "add" })}>Add customer</button>}
       </div>
 
       {/* The key gives each customer a fresh form, so switching from one to another never shows the last one's values. */}
-      {form && (
+      {form?.job === "notes" && (
+        <Notes key={form.customer.id} customer={form.customer} mayAdd={mayEdit} onClose={() => setForm(null)} onSessionEnded={onSessionEnded} />
+      )}
+      {form && form.job !== "notes" && (
         <CustomerForm
           key={form.job === "edit" ? form.customer.id : "new"}
           customer={form.job === "edit" ? form.customer : undefined}
@@ -145,8 +154,8 @@ export function Customers({ permissions, onSessionEnded }: { permissions: string
           type="search"
           name="q"
           className="search"
-          aria-label="Search customers by name"
-          placeholder="Search by name"
+          aria-label="Search customers by name, email or phone"
+          placeholder="Search by name, email or phone"
           autoComplete="off"
           value={typed}
           onChange={(e) => setTyped(e.target.value)}
@@ -164,14 +173,14 @@ export function Customers({ permissions, onSessionEnded }: { permissions: string
         {list.step === "loading" && <p className="empty muted">Loading customers…</p>}
         {list.step === "failed" && <p className="empty error" role="alert">{list.message}</p>}
         {list.step === "ready" && list.customers.length === 0 && (
-          <p className="empty muted">{list.shows.q || list.shows.status ? "No customers match. Search looks at names only." : "No customers yet."}</p>
+          <p className="empty muted">{list.shows.q || list.shows.status ? "No customers match. Search looks for one word: a first name, a last name, an email or a phone number." : "No customers yet."}</p>
         )}
         {list.step === "ready" && list.customers.length > 0 && (
           <table>
             <thead>
               <tr>
                 <th>Name</th><th>Email</th><th>Phone</th><th>Status</th>
-                {(mayEdit || mayDelete) && <th><span className="visually-hidden">Actions</span></th>}
+                <th><span className="visually-hidden">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -179,30 +188,30 @@ export function Customers({ permissions, onSessionEnded }: { permissions: string
                 <tr key={customer.id} className={customer.id === justSaved ? "fresh" : undefined}>
                   <td className="strong">{customer.name}</td>
                   <td>{customer.email}</td>
-                  <td>{customer.phone ?? <span className="muted">—</span>}</td>
+                  <td>{customer.phone}</td>
                   <td><span className={`badge ${customer.status}`}>{customer.status}</span></td>
-                  {(mayEdit || mayDelete) && (
-                    <td className="row-actions">
-                      {confirming === customer.id ? (
-                        <>
-                          <span className="confirm">Delete {customer.name}?</span>
-                          <button className="button small" onClick={() => setConfirming(null)} disabled={deleting}>Cancel</button>
-                          <button className="button small danger" onClick={() => remove(customer)} disabled={deleting}>{deleting ? "Deleting…" : "Delete"}</button>
-                        </>
-                      ) : (
-                        <>
-                          {mayEdit && <button className="button small" aria-label={`Edit ${customer.name}`} onClick={() => open({ job: "edit", customer })}>Edit</button>}
-                          {mayDelete && <button className="button small" aria-label={`Delete ${customer.name}`} onClick={() => { setConfirming(customer.id); setProblem(null); }}>Delete</button>}
-                        </>
-                      )}
-                    </td>
-                  )}
+                  <td className="row-actions">
+                    {confirming === customer.id ? (
+                      <>
+                        <span className="confirm">Delete {customer.name}?</span>
+                        <button className="button small" onClick={() => setConfirming(null)} disabled={deleting}>Cancel</button>
+                        <button className="button small danger" onClick={() => remove(customer)} disabled={deleting}>{deleting ? "Deleting…" : "Delete"}</button>
+                      </>
+                    ) : (
+                      <>
+                        {/* Anyone who can see a customer can read their notes. Writing one needs the same permission as editing. */}
+                        <button className="button small" aria-label={`Notes on ${customer.name}`} onClick={() => open({ job: "notes", customer })}>Notes</button>
+                        {mayEdit && <button className="button small" aria-label={`Edit ${customer.name}`} onClick={() => open({ job: "edit", customer })}>Edit</button>}
+                        {mayDelete && <button className="button small" aria-label={`Delete ${customer.name}`} onClick={() => { setConfirming(customer.id); setProblem(null); }}>Delete</button>}
+                      </>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
-        {list.step === "ready" && list.nextCursor && (
+        {list.step === "ready" && list.nextPage && (
           <div className="more">
             <button className="button" onClick={loadMore} disabled={loadingMore || searching}>{loadingMore ? "Loading…" : "Load more"}</button>
           </div>
@@ -211,7 +220,7 @@ export function Customers({ permissions, onSessionEnded }: { permissions: string
 
       {list.step === "ready" && !mayAdd && (
         <p className="hint muted">
-          {mayEdit ? "Your role can view and edit customers. Adding or deleting one needs the Owner role." : "Your role can view customers. Changing them needs another role."}
+          {mayEdit ? "Your role can view and edit customers and add notes. Adding or deleting a customer needs the Owner role." : "Your role can view customers. Changing them needs another role."}
         </p>
       )}
     </section>

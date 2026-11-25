@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { createApi } from "../src/hyphabase.js";
-import { CAN, ensureRole, findUser, giveRole, permissionsOf, ROLES } from "../src/roles.js";
+import { CAN, CAN_CLIENTS, ensureRole, findUser, giveRole, permissionsOf, ROLES } from "../src/roles.js";
 import { fakeFetch } from "./fake-fetch.js";
 
 const apiWith = (...responses) => {
@@ -11,9 +11,17 @@ const apiWith = (...responses) => {
 };
 
 test("staff can read and edit customers and nothing else; the owner can also add and delete", () => {
-  assert.deepEqual(ROLES.staff.permissions, [CAN.readCustomers, CAN.updateCustomers]);
-  assert.deepEqual(ROLES.owner.permissions, [CAN.readCustomers, CAN.addCustomers, CAN.updateCustomers, CAN.deleteCustomers]);
+  assert.deepEqual(ROLES.staff.permissions, [CAN.readCustomers, CAN.updateCustomers, CAN_CLIENTS.read, CAN_CLIENTS.update]);
+  assert.deepEqual(ROLES.owner.permissions, [
+    CAN.readCustomers, CAN.addCustomers, CAN.updateCustomers, CAN.deleteCustomers,
+    CAN_CLIENTS.read, CAN_CLIENTS.add, CAN_CLIENTS.update, CAN_CLIENTS.delete,
+  ]);
   assert.ok(!ROLES.staff.permissions.includes(CAN.deleteCustomers));
+  assert.ok(!ROLES.staff.permissions.includes(CAN_CLIENTS.delete));
+});
+
+test("the client permissions are the Clients module's own names", () => {
+  assert.deepEqual(CAN_CLIENTS, { read: "clients.view", add: "clients.create", update: "clients.update", delete: "clients.delete" });
 });
 
 test("ensureRole creates a role that does not exist yet", async () => {
@@ -42,7 +50,7 @@ test("ensureRole finds an existing role by name and does not create a second one
 
 test("ensureRole adds the permissions an existing role is missing, and keeps the ones it has", async () => {
   const fromEpisode4 = { id: "r1", name: "Staff", permissions: [CAN.readCustomers, "files.view"] };
-  const permissions = [CAN.readCustomers, "files.view", CAN.updateCustomers];
+  const permissions = [CAN.readCustomers, "files.view", CAN.updateCustomers, CAN_CLIENTS.read, CAN_CLIENTS.update];
   const { api, calls } = apiWith({ body: { data: [fromEpisode4] } }, { body: { data: { ...fromEpisode4, permissions } } });
 
   const result = await ensureRole(api, "loc-1", ROLES.staff);

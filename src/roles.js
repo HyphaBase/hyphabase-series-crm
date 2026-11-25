@@ -14,9 +14,22 @@ export const CAN = {
   deleteCustomers: "data.records.delete",
 };
 
+/**
+ * Episode 8 moved the customers into the Clients module, which has its own
+ * permissions. The web app checks these now. Adding a note to a client
+ * counts as updating that client.
+ */
+export const CAN_CLIENTS = {
+  read: "clients.view",
+  add: "clients.create",
+  update: "clients.update",
+  delete: "clients.delete",
+};
+
+// Both sets, so the small server from episode 4 and the web app both keep working.
 export const ROLES = {
-  owner: { name: "Owner", permissions: [CAN.readCustomers, CAN.addCustomers, CAN.updateCustomers, CAN.deleteCustomers] },
-  staff: { name: "Staff", permissions: [CAN.readCustomers, CAN.updateCustomers] },
+  owner: { name: "Owner", permissions: [...Object.values(CAN), ...Object.values(CAN_CLIENTS)] },
+  staff: { name: "Staff", permissions: [CAN.readCustomers, CAN.updateCustomers, CAN_CLIENTS.read, CAN_CLIENTS.update] },
 };
 
 const ROLES_PATH = "/api/modules/organizations/roles";

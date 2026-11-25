@@ -11,8 +11,7 @@ import path from "node:path";
 import { cookies } from "next/headers";
 import { createCrm, type Crm, type Reply } from "./crm";
 import { sameOrigin } from "./same-origin";
-import { cookieSession } from "./session-cookie";
-import type { SessionStorageAdapter } from "hyphabase";
+import { cookieStorage } from "hyphabase";
 
 let crm: Crm | undefined;
 
@@ -31,6 +30,21 @@ function loadKeys() {
   }
 }
 
+/**
+ * The session of the request being answered: one cookie in that person's
+ * browser, read and written by the SDK. It is httpOnly, so no script on
+ * the page can read the tokens in it, and SameSite=Strict, so another site
+ * cannot make the browser send it. It has no expiry, so it goes when the
+ * browser closes; HyphaBase decides how long the tokens inside it live.
+ */
+const session = async () =>
+  cookieStorage(await cookies(), {
+    name: "crm_session",
+    sameSite: "strict",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: null,
+  });
+
 function theCrm(): Crm {
   if (!crm) loadKeys();
   crm ??= createCrm({
@@ -38,6 +52,7 @@ function theCrm(): Crm {
     secretKey: process.env.HYPHABASE_SECRET_KEY ?? "",
     publishableKey: process.env.HYPHABASE_PUBLISHABLE_KEY ?? "",
     locationId: process.env.HYPHABASE_LOCATION_ID ?? "",
+    session,
     log: (line) => console.log(line),
   });
   return crm;
@@ -46,11 +61,11 @@ function theCrm(): Crm {
 const json = (reply: Reply) =>
   reply.status === 204 ? new Response(null, { status: 204 }) : Response.json(reply.body, { status: reply.status });
 
-/** Connects one HTTP request to one function of the CRM, with the person's cookie as the session. */
-export async function respond(request: Request, work: (crm: Crm, session: SessionStorageAdapter) => Promise<Reply>): Promise<Response> {
+/** Connects one HTTP request to one function of the CRM. */
+export async function respond(request: Request, work: (crm: Crm) => Promise<Reply>): Promise<Response> {
   if (!sameOrigin(request)) return json({ status: 403, body: { error: "This request came from another site." } });
 
-  return json(await work(theCrm(), cookieSession(await cookies())));
+  return json(await work(theCrm()));
 }
 
 /** The JSON body of a request, or undefined when there is none or it is not JSON. */

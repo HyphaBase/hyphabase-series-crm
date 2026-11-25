@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { addPage, describeList, readListQuery, toSearch } from "../lib/customers";
 
-const dana = { id: "1", name: "Dana Whitfield", email: "dana@example.com", phone: null, status: "lead" as const };
-const liam = { id: "2", name: "Liam Ortiz", email: "liam.ortiz@example.com", phone: null, status: "active" as const };
-const priya = { id: "3", name: "Priya Nair", email: "priya@example.com", phone: null, status: "active" as const };
+const dana = { id: "1", first_name: "Dana", last_name: "Whitfield", name: "Dana Whitfield", email: "dana@example.com", phone: "555-0101", status: "lead" as const };
+const liam = { id: "2", first_name: "Liam", last_name: "Ortiz", name: "Liam Ortiz", email: "liam.ortiz@example.com", phone: "555-0102", status: "active" as const };
+const priya = { id: "3", first_name: "Priya", last_name: "Nair", name: "Priya Nair", email: "priya@example.com", phone: "555-0103", status: "active" as const };
 
 describe("the list's address", () => {
   it("is empty for the whole list", () => {
@@ -11,11 +11,12 @@ describe("the list's address", () => {
     expect(toSearch({ q: "   ", status: null })).toBe("");
   });
 
-  it("carries the search and the status, and the cursor only when asked", () => {
+  it("carries the search and the status, and the page only when asked", () => {
     expect(toSearch({ q: "dana", status: null })).toBe("?q=dana");
     expect(toSearch({ q: "", status: "active" })).toBe("?status=active");
     expect(toSearch({ q: " Dana W ", status: "lead" })).toBe("?q=Dana+W&status=lead");
-    expect(toSearch({ q: "dana", status: null, cursor: "abc=" })).toBe("?q=dana&cursor=abc%3D");
+    expect(toSearch({ q: "dana", status: null, page: 2 })).toBe("?q=dana&page=2");
+    expect(toSearch({ q: "dana", status: null, page: null })).toBe("?q=dana");
   });
 
   it("escapes what was typed", () => {
@@ -28,7 +29,7 @@ describe("the list's address", () => {
   });
 
   it("drops a status that does not exist and anything else in the address", () => {
-    expect(readListQuery("?status=archived&cursor=abc&utm_source=x")).toEqual({ q: "", status: null });
+    expect(readListQuery("?status=archived&page=3&utm_source=x")).toEqual({ q: "", status: null });
   });
 });
 
@@ -46,18 +47,18 @@ describe("the line under the heading", () => {
   const all = { q: "", status: null };
 
   it("counts the customers when every one of them is on screen", () => {
-    expect(describeList(3, false, all)).toBe("3 customers in Portland");
-    expect(describeList(1, false, all)).toBe("1 customer in Portland");
+    expect(describeList(3, 3, all)).toBe("3 customers in Portland");
+    expect(describeList(1, 1, all)).toBe("1 customer in Portland");
   });
 
-  it("does not claim a total while there are more to load, because HyphaBase gives none", () => {
-    expect(describeList(25, true, all)).toBe("Showing 25 customers, newest first");
-    expect(describeList(50, true, { q: "an", status: null })).toBe("Showing 50 matches, newest first");
+  it("says how many there are in all while there are more to load: the Clients module returns a total", () => {
+    expect(describeList(25, 63, all)).toBe("Showing 25 of 63 customers, newest first");
+    expect(describeList(50, 58, { q: "an", status: null })).toBe("Showing 50 of 58 matches, newest first");
   });
 
   it("counts the matches of a search or a status", () => {
-    expect(describeList(7, false, { q: "dan", status: null })).toBe("7 customers match");
-    expect(describeList(1, false, { q: "", status: "active" })).toBe("1 customer matches");
-    expect(describeList(0, false, { q: "zzz", status: null })).toBe("No customers match");
+    expect(describeList(7, 7, { q: "dan", status: null })).toBe("7 customers match");
+    expect(describeList(1, 1, { q: "", status: "active" })).toBe("1 customer matches");
+    expect(describeList(0, 0, { q: "zzz", status: null })).toBe("No customers match");
   });
 });
