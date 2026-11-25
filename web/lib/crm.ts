@@ -313,7 +313,11 @@ export function createCrm(config: CrmConfig) {
         let note: ClientNote;
         try {
           // "internal" keeps a note among the people who work here. The category is the module's way to group notes; the CRM uses one.
-          note = await actingAs(session).clients.notes(id).create({ category: "General", content: parsed.content, visibility: "internal" });
+          note = await actingAs(session).clients.notes(id).create({
+            category: "General",
+            content: parsed.content,
+            visibility: "internal",
+          });
         } catch (error) {
           if (error instanceof HyphaBaseError && error.status === 404) throw noSuchCustomer();
           throw error;
